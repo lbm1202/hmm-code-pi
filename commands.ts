@@ -85,7 +85,9 @@ export function registerCommands(rt: Runtime): void {
 	});
 }
 
-/** Handler exported so the VS Code button can drive the same code path. */
+/** Handler exported so the VS Code button can drive the same code path.
+ *  No toast — the toggle UI (VS Code button color / TUI status bar) already
+ *  conveys the state; a center-screen notify on every click is noise. */
 export async function autoApproveHandler(
 	rt: Runtime,
 	ctx: ExtensionContext,
@@ -105,7 +107,6 @@ export async function autoApproveHandler(
 	} catch {
 		/* setStatus may not exist on every UI surface */
 	}
-	ctx.ui.notify(`auto-approve: ${next ? "ON" : "OFF"} (this session)`, "info");
 }
 
 /** Reset handler — shared by /reset and Alt+X (see shortcuts.ts). */
