@@ -9,7 +9,7 @@
 
 import { isAbsolute, relative } from "node:path";
 import type { ModeName } from "../config";
-import { lastMatch } from "./glob";
+import { lastMatch, lastMatchShell } from "./glob";
 import type { Decision, Permissions, Ruleset, ToolKey, Verdict } from "./types";
 
 const VERDICT_RANK: Record<Verdict, number> = { allow: 0, ask: 1, deny: 2 };
@@ -77,19 +77,24 @@ export interface EvaluateInput {
 
 /** Evaluate one (toolName, target) combo against all layers + their per-mode
  *  override slots. Returns the strongest verdict found, or "allow" as the
- *  ultimate default. */
-function evaluateOne(input: EvaluateInput, subject: string, key: ToolKey): Verdict {
+ *  ultimate default. `pathMode = false` switches to shell-command matching
+ *  so `"rm *"` in BASH_DEFAULT correctly catches `"rm /tmp/foo"`. */
+function evaluateOne(
+	input: EvaluateInput,
+	subject: string,
+	key: ToolKey,
+	pathMode = true,
+): Verdict {
+	const matcher = pathMode ? lastMatch : lastMatchShell;
 	let v: Verdict = "allow";
 	for (const layer of input.layers) {
-		// Layer's own rules
 		for (const rs of rulesetsForLayer(layer, key)) {
-			const hit = lastMatch(rs, subject);
+			const hit = matcher(rs, subject);
 			if (hit) v = strongest(v, hit.value);
 		}
-		// Layer's mode override
 		const modeLayer = layer.modes?.[input.mode];
 		for (const rs of rulesetsForLayer(modeLayer, key)) {
-			const hit = lastMatch(rs, subject);
+			const hit = matcher(rs, subject);
 			if (hit) v = strongest(v, hit.value);
 		}
 	}
@@ -118,10 +123,11 @@ export function evaluate(input: EvaluateInput): Decision {
 	const key = toolKeyFor(input.toolName);
 
 	// Bash: match the full command against the bash ruleset. No path/external
-	// logic since bash takes a free-form string.
+	// logic since bash takes a free-form string. Shell-mode matching so `*`
+	// covers `/` (`"rm *"` should catch `"rm /tmp/foo"`).
 	if (key === "bash") {
 		const cmd = input.bashCommand ?? "";
-		const v = evaluateOne(input, cmd, "bash");
+		const v = evaluateOne(input, cmd, "bash", /* pathMode */ false);
 		return {
 			verdict: v,
 			reason:
