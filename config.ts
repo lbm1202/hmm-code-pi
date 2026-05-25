@@ -35,6 +35,11 @@ export interface ModesFile {
 	/** Optional override for the auto-title model (consumed by auto-title.ts).
 	 * When set, takes priority over the GPT-candidate fallback list. */
 	autoTitle?: ModelRef;
+	/** Per-provider model id allowlist consumed by the VS Code extension to
+	 *  filter the model picker. Pi itself ignores this — built-in providers
+	 *  like openai-codex hardcode their model list in pi-ai and can't be
+	 *  trimmed at the registry level, so the filter is applied client-side. */
+	modelAllowlist?: Record<string, string[]>;
 }
 
 export const DEFAULT_MODES: Record<ModeName, ModeConfig> = {
@@ -131,5 +136,6 @@ export function loadModes(_cwd: string): ModesFile {
 		modes: merged,
 		modelAliases: raw.modelAliases ?? {},
 		autoTitle: raw.autoTitle,
+		modelAllowlist: raw.modelAllowlist ?? {},
 	};
 }
