@@ -233,7 +233,7 @@ stash → agent_end → dispatch 패턴.
 
 ## 9. 권한 시스템
 
-별도 문서: [PERMISSIONS.md](PERMISSIONS.md).
+별도 문서: [PERMISSIONS.md](./PERMISSIONS.md).
 
 핵심:
 - Layer 1 = `activeTools` (모드별 도구 종류)
@@ -245,7 +245,7 @@ stash → agent_end → dispatch 패턴.
 
 ## 10. AGENTS.md
 
-별도 문서: [AGENTS-md.md](AGENTS-md.md).
+별도 문서: [AGENTS-MD.md](./AGENTS-MD.md).
 
 핵심: `${cwd}/AGENTS.md` + `~/.pi/agent/AGENTS.md` 가 있으면 매 user
 prompt cycle 의 system prompt 끝에 자동 append.
