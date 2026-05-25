@@ -1,0 +1,93 @@
+import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import { StringEnum } from "@earendil-works/pi-ai";
+import { Type } from "typebox";
+import { MODE_NAMES, type ModeName } from "./config";
+import type { ModeState } from "./state";
+
+export function registerRequestModeSwitch(pi: ExtensionAPI, state: ModeState) {
+	pi.registerTool({
+		name: "request_mode_switch",
+		label: "Request mode switch",
+		description:
+			"Ask the user for permission to switch the active mode. Use ONLY at natural breakpoints: the user explicitly asks to plan, or the current-mode work is naturally complete. Do not call mid-investigation.",
+		parameters: Type.Object({
+			target_mode: StringEnum(MODE_NAMES),
+			reason: Type.String({ description: "1-2 sentences shown to the user explaining the switch" }),
+			context_summary: Type.Optional(
+				Type.String({
+					description:
+						"Short summary of what was done in the current mode. Injected as the user's next message in the target mode.",
+				}),
+			),
+		}),
+
+		async execute(_id, params, _signal, _onUpdate, ctx) {
+			const target = params.target_mode as ModeName;
+
+			if (target === state.current) {
+				return {
+					content: [{ type: "text", text: `Already in ${target} mode.` }],
+					isError: true,
+				};
+			}
+
+			if (target === "code") {
+				return {
+					content: [
+						{
+							type: "text",
+							text: "Cannot enter code mode via request_mode_switch. Switch to plan and call finalize_plan instead.",
+						},
+					],
+					isError: true,
+				};
+			}
+
+			if (!ctx.hasUI) {
+				return {
+					content: [{ type: "text", text: "Cannot prompt for mode switch in headless mode." }],
+					isError: true,
+				};
+			}
+
+			const confirmed = await ctx.ui.confirm(
+				`${params.reason}\n\nSwitch from ${state.current} to ${target}?`,
+				"Mode switch?",
+			);
+
+			if (!confirmed) {
+				return {
+					content: [
+						{
+							type: "text",
+							text: `User declined the switch. Continue in ${state.current} mode.`,
+						},
+					],
+					details: { accepted: false, from: state.current, requested: target },
+				};
+			}
+
+			const origin = state.current;
+			await state.apply(target, ctx);
+
+			// Stash the carry-over message instead of dispatching now: Pi's agent
+			// loop captures model/activeTools/systemPrompt in createLoopConfig
+			// once per runPromptMessages, so a same-loop deliverAs:"followUp"
+			// would still run with the PRE-switch config (old tools, old prompt).
+			// hooks.ts agent_end dispatches this in a fresh loop that reads the
+			// post-apply state. Without this fix, e.g. ask→debug switch leaves
+			// the follow-up turn without `bash` and the LLM correctly reports
+			// "no command tool" even though the user is now in debug mode.
+			if (params.context_summary && params.context_summary.trim()) {
+				state.pendingModeSwitchMessage =
+					`Carry-over from ${origin} mode:\n${params.context_summary.trim()}\n\nPlease continue.`;
+			}
+
+			return {
+				content: [{ type: "text", text: `Switched to ${target} mode.` }],
+				details: { accepted: true, from: origin, to: target },
+				terminate: true,
+			};
+		},
+	});
+}
