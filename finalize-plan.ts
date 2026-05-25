@@ -19,8 +19,27 @@ export function registerFinalizePlan(pi: ExtensionAPI, state: ModeState) {
 		description:
 			"Commit the final plan. Saves a markdown copy under ~/.pi/agent/plans/ and asks the user to pick: new session, current session, or revise.",
 		parameters: Type.Object({
-			summary: Type.String({ description: "One-paragraph summary of the plan" }),
-			steps: Type.Array(Type.String(), { description: "Ordered concrete steps" }),
+			summary: Type.String({
+				description:
+					"One- or two-sentence summary of the plan — shown in the picker / dialog preview. Keep it short; depth goes in `body`.",
+			}),
+			body: Type.String({
+				description:
+					"Free-form markdown design notes. Use `###` or lower (NEVER `##`) — the template wraps this in a `## Design` section, so `##` would collide with Summary/Steps. Include whatever helps: current state, file structure, data models, strategy, trade-offs, risks. Trivial changes can be 1-3 lines; bigger work should be richer.",
+			}),
+			steps: Type.Array(Type.String(), {
+				description: "Ordered concrete steps for the implementing agent to follow.",
+			}),
+			validation: Type.Array(Type.String(), {
+				description:
+					"How to verify the implementation. Each entry is one command (e.g. `pytest tests/test_api.py`) or one scenario (e.g. `Hit /health and confirm 200`). For truly trivial changes use a single explicit entry like `No verification needed — single-file deletion`.",
+			}),
+			docs: Type.Optional(
+				Type.Array(Type.String(), {
+					description:
+						"Documentation to add or update. Each entry names the file + what to change (e.g. `README.md: add Setup section`, `CHANGELOG.md: v0.2 entry`). Omit if no docs work.",
+				}),
+			),
 			target_mode: Type.Optional(StringEnum(TARGETS)),
 		}),
 
@@ -36,8 +55,13 @@ export function registerFinalizePlan(pi: ExtensionAPI, state: ModeState) {
 
 			const targetMode = (params.target_mode ?? "code") as "code" | "debug";
 			const planMarkdown = buildPlanMarkdown(
-				params.summary,
-				params.steps,
+				{
+					summary: params.summary,
+					body: params.body,
+					steps: params.steps,
+					validation: params.validation,
+					docs: params.docs,
+				},
 				targetMode,
 				ctx.model?.provider,
 				ctx.model?.id,
@@ -195,14 +219,21 @@ export function registerFinalizePlan(pi: ExtensionAPI, state: ModeState) {
 	});
 }
 
+interface PlanFields {
+	summary: string;
+	body: string;
+	steps: string[];
+	validation: string[];
+	docs?: string[];
+}
+
 function buildPlanMarkdown(
-	summary: string,
-	steps: string[],
+	plan: PlanFields,
 	targetMode: string,
 	provider?: string,
 	modelId?: string,
 ): string {
-	const header = [
+	const lines: string[] = [
 		"# Plan",
 		"",
 		`- Created: ${new Date().toISOString()}`,
@@ -211,13 +242,29 @@ function buildPlanMarkdown(
 		"",
 		"## Summary",
 		"",
-		summary,
-		"",
-		"## Steps",
-		"",
-	].join("\n");
-	const stepLines = steps.map((s, i) => `${i + 1}. ${s}`).join("\n");
-	return `${header}${stepLines}\n`;
+		plan.summary.trim(),
+	];
+
+	if (plan.body && plan.body.trim()) {
+		lines.push("", "## Design", "", plan.body.trim());
+	}
+
+	lines.push("", "## Steps", "");
+	for (let i = 0; i < plan.steps.length; i++) {
+		lines.push(`${i + 1}. ${plan.steps[i]}`);
+	}
+
+	if (plan.validation && plan.validation.length > 0) {
+		lines.push("", "## Validation", "");
+		for (const v of plan.validation) lines.push(`- ${v}`);
+	}
+
+	if (plan.docs && plan.docs.length > 0) {
+		lines.push("", "## Documentation", "");
+		for (const d of plan.docs) lines.push(`- ${d}`);
+	}
+
+	return `${lines.join("\n")}\n`;
 }
 
 function planMessageBody(planMarkdown: string): string {

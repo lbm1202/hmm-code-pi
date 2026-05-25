@@ -61,6 +61,44 @@ plan 모드의 유일한 mutating 도구. 호출 시 3개 분기 다이얼로그
 `.pi/plans/plan-<adjective>-<noun>.md` 항상 저장. 모든 분기에서 동일 —
 취소해도 파일은 남음.
 
+### 스키마
+
+```ts
+finalize_plan({
+  summary: string,             // 필수. 1-2 문장. 다이얼로그/picker preview
+  body: string,                // 필수. 자유 markdown (### 이하만). 현재 상태 / 파일 구조 / 데이터 모델 / 전략 / 리스크 등
+  steps: string[],             // 필수. 실행 순서 (LLM 이 따라갈 체크리스트)
+  validation: string[],        // 필수. 검증 명령 / 시나리오. trivial 이면 "No verification needed — ..." 한 줄
+  docs?: string[],             // 선택. 갱신할 문서 (예: "README.md: Setup 섹션")
+  target_mode?: "code" | "debug",
+})
+```
+
+### 출력 마크다운
+
+```markdown
+# Plan
+- Created: ... / Target mode: ... / Source model: ...
+
+## Summary
+{summary}
+
+## Design        ← body 가 있을 때만 (스키마 필수라 거의 항상)
+{body}           ← LLM 이 ### 이하로 작성. ## 쓰면 Summary/Steps 와 같은 레벨이 돼 깨짐
+
+## Steps
+1. ...
+
+## Validation    ← validation 이 있을 때만 (필수라 항상)
+- ...
+
+## Documentation ← docs 가 있을 때만 (optional)
+- ...
+```
+
+VS Code 의 finalize_plan 인라인 미리보기 ([tools.ts:renderFinalizePlanPreview](https://github.com/lbm1202/hmm-code-vscode/blob/main/webview/tools.ts))
+가 같은 구조로 렌더 — 다이얼로그 뜬 상태에서 사용자가 본문 확인 가능.
+
 ### A. 새 세션
 1. plan 파일 저장
 2. `ctx.newSession({ parentSession, withSession })` 으로 새 세션 spawn
