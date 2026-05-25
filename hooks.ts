@@ -242,6 +242,39 @@ function setupRuntimeHooks(rt: Runtime): void {
 	// reflects the fallback immediately instead of waiting for /reload.
 	pi.on("message_end", async (event: any, ctxMe: any) => {
 		if (event?.message?.role !== "assistant") return;
+
+		// Sanitize toolCall names that violate OpenAI Responses API's strict
+		// regex `^[a-zA-Z0-9_-]+$`. Local models (Qwen via vLLM, etc.) can
+		// emit malformed XML/JSON tool calls where the LLM jams the whole
+		// command into the `name` field — e.g. `"ls /Users/foo\n</parameter"`.
+		// Pi happily stores these in the session jsonl. They round-trip fine
+		// through tolerant providers (Anthropic, openai-completions), but the
+		// moment the user switches to codex/openai-responses the whole session
+		// hard-stucks: every subsequent request includes the bad name in
+		// history and gets a 400. Replace with a sentinel here so Pi's normal
+		// "tool not found" path runs (LLM sees the error and retries) and
+		// the session stays codex-portable.
+		let sanitized = false;
+		try {
+			const content = event.message?.content;
+			if (Array.isArray(content)) {
+				for (const part of content) {
+					if (part?.type !== "toolCall") continue;
+					const name = (part as { name?: unknown }).name;
+					if (typeof name !== "string") continue;
+					if (/^[a-zA-Z0-9_-]+$/.test(name)) continue;
+					const snippet = name.replace(/\s+/g, " ").slice(0, 80);
+					console.error(
+						`[modes:sanitize] invalid toolCall name '${snippet}${name.length > 80 ? "…" : ""}' → '_invalid_tool_call'`,
+					);
+					(part as { name: string }).name = "_invalid_tool_call";
+					sanitized = true;
+				}
+			}
+		} catch (err) {
+			console.error("[modes:hooks] toolCall sanitize failed:", err);
+		}
+
 		try {
 			const liveId = ctxMe?.model?.id;
 			const liveProvider = (ctxMe?.model as { provider?: string } | undefined)?.provider;
@@ -258,6 +291,10 @@ function setupRuntimeHooks(rt: Runtime): void {
 		}
 		rt.invalidateFooter?.();
 		rt.requestRender();
+
+		// If we sanitized, return the mutated message so Pi persists the
+		// cleaned version (not the original) to the session jsonl.
+		if (sanitized) return { message: event.message };
 	});
 
 	// Auto-compact: bail at the threshold to avoid Pi's reserveTokens trigger
