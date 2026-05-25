@@ -147,6 +147,11 @@ export class ModeState {
 		return this.modes.modelAliases ?? {};
 	}
 
+	/** Optional auto-title model override (modes.json:autoTitle). */
+	get autoTitleOverride(): { provider: string; id: string } | undefined {
+		return this.modes.autoTitle;
+	}
+
 	computeActiveTools(name: ModeName, allToolNames: string[]): { tools: string[]; stripped: string[] } {
 		const cfg = this.configFor(name);
 		const requested = cfg.activeTools ?? [];

@@ -35,7 +35,7 @@ function resolveTitleModel(ctx: any, state: ModeState): { model: any; via: strin
 			return false;
 		}
 	};
-	const override = (state as any).modes?.autoTitle;
+	const override = state.autoTitleOverride;
 	if (override && override.provider && override.id) {
 		const m = ctx.modelRegistry?.find?.(override.provider, override.id);
 		if (m && authed(m)) return { model: m, via: `override:${override.provider}/${override.id}` };

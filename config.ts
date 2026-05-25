@@ -32,6 +32,9 @@ export interface ModesFile {
 	 * the alias), and the `/mode-set` model picker. Full ID is still the
 	 * canonical reference everywhere else. */
 	modelAliases?: Record<string, string>;
+	/** Optional override for the auto-title model (consumed by auto-title.ts).
+	 * When set, takes priority over the GPT-candidate fallback list. */
+	autoTitle?: ModelRef;
 }
 
 export const DEFAULT_MODES: Record<ModeName, ModeConfig> = {
@@ -127,5 +130,6 @@ export function loadModes(_cwd: string): ModesFile {
 		defaultMode,
 		modes: merged,
 		modelAliases: raw.modelAliases ?? {},
+		autoTitle: raw.autoTitle,
 	};
 }
