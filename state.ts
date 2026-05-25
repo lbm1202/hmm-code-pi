@@ -57,6 +57,14 @@ export class ModeState {
 	pendingModeSwitchMessage: string | undefined;
 	onApply?: () => void;
 	editorInstance: any;
+	/**
+	 * Auto-approve toggle for the permission system. When true, any "ask"
+	 * verdict from the evaluator passes through without a confirm dialog.
+	 * Session-scoped — reset on every session_start. Toggled via the
+	 * /auto-approve slash command (CLI) or the inline button in the
+	 * VS Code chat footer.
+	 */
+	autoApprove = false;
 	// Auto-compact bookkeeping: avoid retriggering while one is in flight.
 	compactInFlight = false;
 

@@ -9,6 +9,7 @@ import { registerAutoTitle } from "./auto-title";
 import { registerCommands } from "./commands";
 import { registerFinalizePlan } from "./finalize-plan";
 import { registerHooks } from "./hooks";
+import { registerPermissions } from "./permissions";
 import { registerRequestModeSwitch } from "./request-mode-switch";
 import { registerShortcuts } from "./shortcuts";
 import { ModeState } from "./state";
@@ -35,4 +36,5 @@ export default function modesExtension(pi: ExtensionAPI) {
 	registerCommands(rt);
 	registerShortcuts(rt);
 	registerHooks(rt);
+	registerPermissions(rt);
 }

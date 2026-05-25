@@ -73,6 +73,16 @@ export function registerHooks(rt: Runtime): void {
 		state.setModes(loadModes(ctx.cwd));
 		writeExampleConfigIfMissing();
 
+		// Reset auto-approve on every session start. Carrying it across new
+		// sessions (or even fork/switch) would silently grant blanket bypass
+		// long after the user forgot they enabled it.
+		state.autoApprove = false;
+		try {
+			ctx.ui.setStatus("auto-approve", "off");
+		} catch {
+			/* setStatus may not exist on every UI surface */
+		}
+
 		// On reload, ctx.reload() refreshes settingsManager but NOT the
 		// modelRegistry — its cache of custom models.json + dynamic provider
 		// configs becomes stale. Explicit refresh here re-reads models.json

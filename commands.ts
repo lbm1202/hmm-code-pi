@@ -71,6 +71,41 @@ export function registerCommands(rt: Runtime): void {
 			}
 		},
 	});
+
+	// /auto-approve — session-scoped binary toggle. Forms:
+	//   /auto-approve         → toggle (default behavior)
+	//   /auto-approve on      → force on
+	//   /auto-approve off     → force off
+	// Never persisted to disk by design — making "on" the permanent default
+	// would defeat the permission system. For a permanent rule edit
+	// ~/.pi/agent/permissions.json directly.
+	pi.registerCommand("auto-approve", {
+		description: "Toggle session bypass for permission ask prompts",
+		handler: async (args, ctx) => autoApproveHandler(rt, ctx, args),
+	});
+}
+
+/** Handler exported so the VS Code button can drive the same code path. */
+export async function autoApproveHandler(
+	rt: Runtime,
+	ctx: ExtensionContext,
+	args: string,
+): Promise<void> {
+	const { state } = rt;
+	const tok = (args ?? "").trim().toLowerCase();
+	const next =
+		tok === "on" || tok === "true" || tok === "1"
+			? true
+			: tok === "off" || tok === "false" || tok === "0"
+				? false
+				: !state.autoApprove;
+	state.autoApprove = next;
+	try {
+		ctx.ui.setStatus("auto-approve", next ? "on" : "off");
+	} catch {
+		/* setStatus may not exist on every UI surface */
+	}
+	ctx.ui.notify(`auto-approve: ${next ? "ON" : "OFF"} (this session)`, "info");
 }
 
 /** Reset handler — shared by /reset and Alt+X (see shortcuts.ts). */
