@@ -1,121 +1,158 @@
 # Hmm-code (Pi extension)
 
 Pi-side of **Hmm-code** — a multi-mode wrapper for the
-[Pi coding agent](https://github.com/badlogic/pi-mono) (earendil-works/pi).
-Adds four explicit modes — **plan / code / debug / ask** — with per-mode
-model, thinking level, active tools, system-prompt addendum, temperature,
-and chat template. All code-modifying paths go through `plan → code`.
+[Pi coding agent](https://github.com/badlogic/pi-mono).
+4개 명시적 모드 — **plan / code / debug / ask** — 각자 모델/thinking/도구
+/system prompt 를 독립 운영. 모든 코드 수정 경로는 반드시 `plan → code`.
 
-For the VS Code UI that wraps `pi --mode rpc`, see the companion repo
+VS Code UI (`pi --mode rpc` wrapper) 는 자매 repo
 [hmm-code-vscode](https://github.com/lbm1202/hmm-code-vscode).
 
-## Modes
+---
 
-| Mode  | LLM tools (config)                       | Auto-injected                                  | Purpose                                                                |
-|-------|------------------------------------------|------------------------------------------------|------------------------------------------------------------------------|
-| plan  | read, grep, find, ls, bash               | ask_user, request_mode_switch, **finalize_plan** | Investigate read-only; design with `ask_user`; commit via `finalize_plan`. |
-| code  | read, edit, write, bash, grep, find, ls  | ask_user, request_mode_switch, **todo_write** | Execute the handed-off plan. Only mode with write/edit.                |
-| debug | read, bash, grep, find, ls               | ask_user, request_mode_switch, **todo_write** | Reproduce, inspect, hypothesize. No source mutation.                   |
-| ask   | read, grep                               | ask_user, request_mode_switch                  | Concise explanations. Minimal tool use.                                |
+## 한눈에
 
-`edit` and `write` are automatically stripped from plan/debug/ask via
-`PROTECTED_FROM_NON_CODE` in `state.ts` — even if the user adds them to
-`modes.json` by mistake.
+| 기능 | 요약 |
+|---|---|
+| **4 모드** | plan / code / debug / ask — 모드별 model + thinking + 도구 + system prompt |
+| **finalize_plan** | plan → code 핸드오프 (new session / current session / revise 3분기) |
+| **request_mode_switch** | LLM 이 모드 전환 제안 → 사용자 confirm → 자동 전환 |
+| **권한 시스템** | tool_call 훅에서 path/bash 패턴 평가 (Kilo-aligned) — `~/.pi/agent/permissions.json` + `.piignore` |
+| **auto-approve** | 세션 한정 토글 — ask 자동 통과 (CLI 슬래시 + VS Code 인라인 버튼) |
+| **AGENTS.md** | `${cwd}/AGENTS.md` + `~/.pi/agent/AGENTS.md` 자동 주입 |
+| **자동 제목** | 첫 메시지 페어 후 GPT-mini 로 세션 제목 생성 |
+| **자동 컴팩트** | 75% 컨텍스트 도달 시 자동 compact |
 
-## Installation
+---
+
+## 설치
 
 ```bash
 mkdir -p ~/.pi/agent/extensions
 git clone https://github.com/lbm1202/hmm-code-pi ~/.pi/agent/extensions/modes
 ```
 
-Pi loads it on next start. On first launch the extension self-installs
-the required Pi `settings.json` / `keybindings.json` overrides
-(`quietStartup`, `hideThinkingBlock`, Shift+Tab cycle, Alt+T thinking
-toggle, etc.) and auto-reloads.
+Pi 가 다음 시작 시 자동 로드. 첫 실행에 다음 파일들 자동 생성:
+- `~/.pi/agent/modes.example.json` — 모드 설정 템플릿
+- `~/.pi/agent/permissions.example.json` — 권한 룰 템플릿
+- `~/.pi/agent/keybindings.json` — Shift+Tab / Alt+T / Alt+X 자동 install
+- `~/.pi/agent/settings.json` — quietStartup, hideThinkingBlock
 
-Per-mode config lives at `~/.pi/agent/modes.json`. If absent, the defaults
-in `config.ts:DEFAULT_MODES` apply. A `modes.example.json` template is
-also written on first run.
+---
 
-## Slash commands
+## 모드 요약
 
-- `/mode [name]` — open picker, or switch to a named mode directly.
-- `/mode-set` — interactive editor for per-mode model + thinking level
-  (loops until done, auto-reloads on exit).
-- `/plan-execute` — launch the most recent (or pending) plan in a new
-  child session (linked to the parent for picker-tree grouping).
-- `/reset` — restore model + thinking to current mode's defaults
-  (RPC counterpart of Alt+X).
+| Mode  | LLM 도구 (config) | 자동 주입 | 권한 layer 2 | 용도 |
+|-------|------------------|-----------|--------------|------|
+| plan  | read, grep, find, ls, bash | ask_user, request_mode_switch, **finalize_plan** | bash → readOnlyBash, edit/write `.pi/plans/*.md` 만 | 조사 + 설계 + finalize_plan |
+| code  | read, edit, write, bash, grep, find, ls | ask_user, request_mode_switch, todo_write | base defaults (bash 안전명령 allow, 위험 ask) | 실제 코드 작성 |
+| debug | read, bash, grep, find, ls | ask_user, request_mode_switch, todo_write | base defaults (debug 는 free shell) | 재현 + 진단 + 가설 검증 |
+| ask   | read, grep | ask_user, request_mode_switch | bash → readOnlyBash, edit/write deny | 설명 + Q&A |
 
-## Shortcuts (TUI)
+`edit`/`write` 는 plan/debug/ask 에서 자동 제거됨 — 사용자가 modes.json
+에 추가해도 무시 + 경고.
 
-- `Shift+Tab` / `Ctrl+Alt+M` — cycle modes (code → plan → debug → ask).
-- `Alt+T` — toggle thinking level. Provider-aware:
-  - Qwen-style binary providers (`qwen-chat-template`, `zai`): off/on toggle.
-  - Reasoning models (GPT-5, Claude, etc.): cycle off/minimal/low/medium/high.
-- `Alt+X` — reset model + thinking to the current mode's defaults.
+워크플로우 다이어그램은 [WORKFLOW.md](WORKFLOW.md) 참조.
 
-## Workflow
+---
 
-```
-ask ─────────────────► request_mode_switch("plan", reason, summary)
-                                                                    \
-debug ───────────────► request_mode_switch("plan", reason, summary) ─► plan ─► finalize_plan ─► code
-                                                                    /                       (new-session OR current-session)
-plan ──────────────────────────────────────────────────────────────/
-```
+## 문서
 
-Plans saved at `~/.pi/agent/plans/plan-YYYYMMDD-<adjective>-<noun>.md`.
-Handoff messages explicitly remind the model that it is no longer
-read-only and that the plan is authoritative scope.
-
-## Hard constraints
-
-Plan / debug / ask modes cannot create, modify, or delete files — by any
-means. This includes the obvious mutators (`edit`/`write` tools, bash
-redirects, in-place editors, `rm/mv/cp/touch/chmod`, VCS state changes)
-**and interpreter bypasses** (`python -c`, `python3 - <<HEREDOC`, `node -e`,
-`ruby -e`, `perl -e` — even when the bash invocation itself looks
-read-only, a runtime that internally calls `write_text`/`fs.writeFile`/
-`open("w")` is a forbidden side-effect).
-
-The constraint lives in two layers:
-
-1. **Hard enforcement**: `setActiveTools` removes `edit`/`write` from
-   plan/debug/ask. The tools literally aren't exposed to the LLM.
-2. **Prompt enforcement**: the system-prompt addendum spells out the
-   common bypass paths (bash redirects, in-place editors, interpreter
-   heredocs, VCS state, package install). See `config.ts:DEFAULT_MODES`.
-
-The only file write in plan mode is the plan markdown itself, which
-`finalize_plan` writes via Node `fs.writeFileSync` (extension code runs
-with full system permissions regardless of `setActiveTools`).
-
-## Files
-
-| File | Role |
+| 문서 | 내용 |
 |---|---|
-| `index.ts` | Bootstrap. Wires runtime + tools + commands + shortcuts + hooks. |
-| `config.ts` | Mode schema, `loadModes`, `DEFAULT_MODES` (system prompts). |
-| `constants.ts` | `STATUS_KEYS`, `AUTO_COMPACT_THRESHOLD`, banner constants. Single source of truth for version + author. |
-| `runtime.ts` | Shared `Runtime` context (editor ref + footer invalidator). |
-| `ui.ts` | ANSI/banner rendering helpers, mixed-case "Hmm" glyph table. |
-| `plans.ts` | `~/.pi/agent/plans/` path + unique name generator. |
-| `config-io.ts` | `~/.pi/agent/{modes.json, keybindings.json, settings.json}` I/O. |
-| `state.ts` | `ModeState` (apply/reset/footer-render), `pushStatus` for RPC clients. |
-| `commands.ts` | `/mode`, `/mode-set`, `/plan-execute`, `/reset`. |
-| `shortcuts.ts` | Shift+Tab, Ctrl+Alt+M, Alt+T, Alt+X. |
-| `hooks.ts` | `session_start` (header/footer/editor), provider payload mutation, deferred dispatch for plan-handoff & mode-switch follow-ups. |
-| `ask-user.ts` | Multi-question card tool. |
-| `request-mode-switch.ts` | Permission-asking mode switch (carry-over deferred to `agent_end` to avoid stale model/tool capture). |
-| `finalize-plan.ts` | Plan commit + 3-option dialog (new session / current session / revise). |
-| `todo.ts` | OpenCode/Kilo-style `todo_write` task list. |
-| `auto-title.ts` | First-turn session naming via a small GPT model (with `getApiKeyAndHeaders` auth resolve). |
+| [WORKFLOW.md](WORKFLOW.md) | 모드 전환 / finalize_plan / agent_end deferred dispatch / 세션 lifecycle |
+| [PERMISSIONS.md](PERMISSIONS.md) | 권한 시스템 전체 — 룰 문법, 빌트인, 사용자 설정, 예시 |
+| [AGENTS-md.md](AGENTS-md.md) | AGENTS.md 자동 주입 메커니즘 |
+| [ANALYSIS.md](ANALYSIS.md) | 파일별 deep-dive + 리팩토링 히스토리 |
 
-See [`ANALYSIS.md`](ANALYSIS.md) for the per-file deep dive and
-refactoring history.
+---
+
+## 슬래시 명령
+
+| 명령 | 설명 |
+|---|---|
+| `/mode [name]` | picker 또는 직접 전환 |
+| `/mode-set` | 모드별 model + thinking 인터랙티브 편집 (auto-reload) |
+| `/plan-execute` | 가장 최근 plan 을 새 child 세션에서 실행 |
+| `/reset` | model + thinking 을 현재 모드의 default 로 복원 (Alt+X 와 동일) |
+| `/auto-approve [on\|off]` | 권한 ask 자동 통과 토글 (세션 한정) |
+| `/reload-runtime` | 확장/설정/모델 reload (RPC-safe, built-in `/reload` 대체) |
+
+---
+
+## 단축키 (TUI)
+
+| 키 | 동작 |
+|---|---|
+| `Shift+Tab` / `Ctrl+Alt+M` | 모드 순환 (code → plan → debug → ask) |
+| `Alt+T` | thinking 레벨 토글 (provider-aware) |
+| `Alt+X` | model + thinking 을 모드 default 로 reset |
+
+`Alt+T`:
+- Qwen-style binary providers (`qwen-chat-template`, `zai`): off/on
+- Reasoning models (GPT-5, Claude 등): off / minimal / low / medium / high cycle
+
+---
+
+## 설정 파일
+
+| 경로 | 내용 |
+|---|---|
+| `~/.pi/agent/modes.json` | 모드별 model/thinking/activeTools/systemPromptAddendum/temperature/chatTemplate, modelAliases, autoTitle 모델, modelAllowlist |
+| `~/.pi/agent/permissions.json` | 권한 룰 (글로벌). 자세히는 [PERMISSIONS.md](PERMISSIONS.md) |
+| `${cwd}/.pi/permissions.json` | 권한 룰 (프로젝트별, 글로벌 override) |
+| `${cwd}/.piignore` | gitignore-style 차단 (모든 도구 deny) |
+| `${cwd}/AGENTS.md` | 프로젝트 컨텍스트 (system prompt 자동 주입) |
+| `~/.pi/agent/AGENTS.md` | 글로벌 컨텍스트 |
+| `~/.pi/agent/plans/` | finalize_plan 결과물 저장 |
+
+---
+
+## 핵심 불변 조건
+
+1. **write/edit 권한은 오직 code 모드** — plan/debug/ask 의 activeTools
+   에서 자동 제거 (`state.ts:PROTECTED_FROM_NON_CODE`)
+2. **finalize_plan 은 오직 plan 모드** — code 진입의 유일한 명시적 경로
+3. **request_mode_switch("code") 금지** — code 는 finalize_plan 통해서만
+4. **시스템 path 작업도 권한 layer 통과** — `~/.ssh`, `/etc` 등 외부
+   디렉터리 ask 또는 deny
+
+---
+
+## 파일 구조
+
+```
+~/.pi/agent/extensions/modes/
+├── index.ts             # 부팅 — Runtime 만들고 tools/commands/shortcuts/hooks 등록
+├── config.ts            # 모드 스키마 + loadModes + DEFAULT_MODES (system prompts)
+├── constants.ts         # STATUS_KEYS, AUTO_COMPACT_THRESHOLD, 버전/저자 single source
+├── runtime.ts           # 공유 Runtime context (editor ref + footer invalidator)
+├── ui.ts                # ANSI/banner 헬퍼, mixed-case "Hmm" glyph table
+├── plans.ts             # ~/.pi/agent/plans/ 경로 + unique name 생성
+├── config-io.ts         # modes.json / keybindings.json / settings.json I/O
+├── state.ts             # ModeState (apply/reset/footer), pushStatus for RPC
+├── commands.ts          # /mode, /mode-set, /plan-execute, /reset, /reload-runtime, /auto-approve
+├── shortcuts.ts         # Shift+Tab, Ctrl+Alt+M, Alt+T, Alt+X
+├── hooks.ts             # session_start, before_agent_start (AGENTS.md), before_provider_request, agent_end (deferred dispatch)
+├── ask-user.ts          # multi-question card tool
+├── request-mode-switch.ts  # 모드 전환 제안 (carry-over deferred)
+├── finalize-plan.ts     # plan commit + 3분기 다이얼로그
+├── todo.ts              # OpenCode/Kilo style todo_write
+├── auto-title.ts        # 첫 메시지 페어 후 GPT-mini 세션 제목 생성
+└── permissions/         # 권한 시스템 (자세히 PERMISSIONS.md)
+    ├── index.ts         # tool_call 훅 + 평가 진입점
+    ├── defaults.ts      # BASE_DEFAULTS + MODE_DEFAULTS
+    ├── bash-rules.ts    # BASH_DEFAULT + BASH_READ_ONLY (Kilo MIT 차용)
+    ├── evaluator.ts     # layer merge + strongest verdict
+    ├── glob.ts          # 경량 minimatch (path mode + shell mode)
+    ├── piignore.ts      # .piignore 파서
+    ├── extract-paths.ts # 도구별 path 추출
+    ├── loader.ts        # JSON 디스크 로더 (mtime 캐시)
+    └── types.ts         # Verdict / Permissions / Ruleset 스키마
+```
+
+---
 
 ## License
 
-Personal use.
+Personal use. Bash rule patterns adapted from [Kilo Code](https://github.com/Kilo-Org/kilocode) (MIT).
