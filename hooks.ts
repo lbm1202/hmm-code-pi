@@ -3,6 +3,9 @@
 // invalidation, auto-compact at the threshold, and deferred plan dispatch.
 
 import { CustomEditor } from "@earendil-works/pi-coding-agent";
+import { existsSync, readFileSync } from "node:fs";
+import { homedir } from "node:os";
+import { join } from "node:path";
 import { loadModes, MODE_NAMES, type ModeName } from "./config";
 import { writeExampleConfigIfMissing, ensureKeybindingsOverride, ensureQuietStartup } from "./config-io";
 import { AUTO_COMPACT_THRESHOLD, STATUS_KEYS } from "./constants";
@@ -30,13 +33,29 @@ export function registerHooks(rt: Runtime): void {
 		if (cfg?.chatTemplate !== undefined) payload.chat_template = cfg.chatTemplate;
 	});
 
-	// Append the mode addendum to the agent's system prompt.
-	pi.on("before_agent_start", async (event) => {
+	// Append the mode addendum + any AGENTS.md content to the agent's system
+	// prompt. Re-evaluated each agent_start, so editing AGENTS.md mid-session
+	// takes effect on the next user prompt without a reload.
+	pi.on("before_agent_start", async (event, ctx) => {
 		const addendum = state.config?.systemPromptAddendum;
-		if (!addendum) return;
-		return {
-			systemPrompt: `${event.systemPrompt}\n\n## Active mode: ${state.current}\n${addendum}`,
-		};
+		const agents = readAgentsMd(ctx?.cwd);
+		if (!addendum && !agents) return;
+		const sections = [event.systemPrompt];
+		if (addendum) {
+			sections.push(`## Active mode: ${state.current}\n${addendum}`);
+		}
+		if (agents) {
+			// Project AGENTS.md overrides global where they overlap (LLMs follow
+			// later instructions more closely than earlier ones), so emit
+			// global first then project.
+			if (agents.global) {
+				sections.push(`## Global AGENTS.md (~/.pi/agent/AGENTS.md)\n${agents.global}`);
+			}
+			if (agents.project) {
+				sections.push(`## Project AGENTS.md (${agents.projectPath})\n${agents.project}`);
+			}
+		}
+		return { systemPrompt: sections.join("\n\n") };
 	});
 
 	pi.on("session_start", async (event, ctx) => {
@@ -300,6 +319,36 @@ function setupRuntimeHooks(rt: Runtime): void {
 			}
 		});
 	});
+}
+
+/** Load AGENTS.md from the project cwd + ~/.pi/agent/ (global). Returns
+ *  undefined if neither exists. Re-read on every call so editing the file
+ *  mid-session takes effect on the next user prompt — small file, cheap. */
+function readAgentsMd(cwd: string | undefined):
+	| { project?: string; projectPath?: string; global?: string }
+	| undefined {
+	const result: { project?: string; projectPath?: string; global?: string } = {};
+	if (cwd) {
+		const p = join(cwd, "AGENTS.md");
+		if (existsSync(p)) {
+			try {
+				result.project = readFileSync(p, "utf-8").trim();
+				result.projectPath = p;
+			} catch (err) {
+				console.error(`[modes] failed to read ${p}:`, err);
+			}
+		}
+	}
+	const g = join(homedir(), ".pi", "agent", "AGENTS.md");
+	if (existsSync(g)) {
+		try {
+			result.global = readFileSync(g, "utf-8").trim();
+		} catch (err) {
+			console.error(`[modes] failed to read ${g}:`, err);
+		}
+	}
+	if (!result.project && !result.global) return undefined;
+	return result;
 }
 
 function setupEditor(rt: Runtime, ctx: any): void {
