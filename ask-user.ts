@@ -4,8 +4,12 @@ import { Type } from "typebox";
 interface AskAnswer {
 	topic: string;
 	question: string;
+	/** One label (single-select) or multiple labels joined by ", " (multi-select). */
 	selected: string;
+	/** Array form — populated for both single (length 1) and multi-select (any). */
+	selectedAll: string[];
 	wasOther: boolean;
+	multiSelect: boolean;
 }
 
 const OptionSchema = Type.Object({
@@ -21,6 +25,12 @@ const QuestionSchema = Type.Object({
 		maxItems: 4,
 		description: "2-4 options. Put recommended first and append '(recommended)'.",
 	}),
+	multiSelect: Type.Optional(
+		Type.Boolean({
+			description:
+				"Set true when the user should pick multiple (non-exclusive) options. Default false (single-select).",
+		}),
+	),
 });
 
 const AskUserParams = Type.Object({
@@ -49,6 +59,7 @@ export function registerAskUser(pi: ExtensionAPI) {
 
 			const answers: AskAnswer[] = [];
 			for (const q of params.questions) {
+				const multi = q.multiSelect === true;
 				const labels = q.options.map((o, i) =>
 					o.description ? `${i + 1}. ${o.label} — ${o.description}` : `${i + 1}. ${o.label}`,
 				);
@@ -59,7 +70,91 @@ export function registerAskUser(pi: ExtensionAPI) {
 				const otherLabel = `${q.options.length + 1}. Other (type your own)`;
 				labels.push(otherLabel);
 
-				const choice = await ctx.ui.select(`[${q.topic}] ${q.question}`, labels);
+				const titlePrefix = multi ? `[${q.topic}] (선택 가능: 다중) ` : `[${q.topic}] `;
+
+				if (multi) {
+					// TUI multi-select: Pi doesn't have a native multi-pick UI, so we
+					// loop ui.select with a "Done" sentinel — user picks one option
+					// per round, picking "Done" finishes (or "Other" pops a single
+					// free-text). RPC clients (VS Code webview) instead receive the
+					// labels joined by "\n" and return a comma-separated string of
+					// chosen labels in one shot — we detect both paths below.
+					const DONE = `${q.options.length + 2}. ✓ Done (선택 완료)`;
+					const labelsForMulti = [...labels, DONE];
+					const picked = new Set<string>();
+					let otherText: string | undefined;
+					while (true) {
+						const title = `${titlePrefix}${q.question}${picked.size > 0 ? `\n\n선택됨: ${[...picked].join(", ")}` : ""}`;
+						const choice = await ctx.ui.select(title, labelsForMulti);
+						if (choice == null) {
+							return {
+								content: [
+									{
+										type: "text",
+										text: `User cancelled at "${q.topic}". Continue without these answers.`,
+									},
+								],
+								details: { cancelled: true, answers },
+							};
+						}
+						// RPC clients may return comma-separated label list as a one-shot.
+						if (
+							!labelsForMulti.includes(choice) &&
+							choice !== otherLabel &&
+							choice !== DONE
+						) {
+							// Parse "label1, label2" or single free text
+							const parts = choice
+								.split(",")
+								.map((p) => p.trim())
+								.filter(Boolean);
+							for (const p of parts) {
+								const matched = labels.find(
+									(l) => l.replace(/^\d+\.\s+/, "").split(" — ")[0] === p,
+								);
+								if (matched) {
+									picked.add(matched.replace(/^\d+\.\s+/, "").split(" — ")[0]);
+								} else {
+									// Treat as free-text other
+									otherText = otherText ? `${otherText}, ${p}` : p;
+								}
+							}
+							break;
+						}
+						if (choice === DONE) {
+							if (picked.size === 0 && !otherText) {
+								// Nothing picked — let them keep going or cancel
+								continue;
+							}
+							break;
+						}
+						if (choice === otherLabel) {
+							const written = await ctx.ui.input(`[${q.topic}] Type your answer`, "");
+							if (written && written.trim()) {
+								otherText = written.trim();
+							}
+							continue;
+						}
+						// Numbered option — toggle in/out
+						const stripped = choice.replace(/^\d+\.\s+/, "").split(" — ")[0];
+						if (picked.has(stripped)) picked.delete(stripped);
+						else picked.add(stripped);
+					}
+					const selectedAll = [...picked];
+					if (otherText) selectedAll.push(otherText);
+					answers.push({
+						topic: q.topic,
+						question: q.question,
+						selected: selectedAll.join(", "),
+						selectedAll,
+						wasOther: !!otherText,
+						multiSelect: true,
+					});
+					continue;
+				}
+
+				// Single-select path
+				const choice = await ctx.ui.select(`${titlePrefix}${q.question}`, labels);
 				if (choice == null) {
 					return {
 						content: [
@@ -73,7 +168,6 @@ export function registerAskUser(pi: ExtensionAPI) {
 				}
 
 				if (choice === otherLabel) {
-					// TUI flow: chained ui.input prompt for free-text.
 					const written = await ctx.ui.input(`[${q.topic}] Type your answer`, "");
 					if (!written || !written.trim()) {
 						return {
@@ -83,29 +177,42 @@ export function registerAskUser(pi: ExtensionAPI) {
 							details: { cancelled: true, answers },
 						};
 					}
+					const text = written.trim();
 					answers.push({
 						topic: q.topic,
 						question: q.question,
-						selected: written.trim(),
+						selected: text,
+						selectedAll: [text],
 						wasOther: true,
+						multiSelect: false,
 					});
 				} else if (labels.includes(choice)) {
 					const stripped = choice.replace(/^\d+\.\s+/, "").split(" — ")[0];
-					answers.push({ topic: q.topic, question: q.question, selected: stripped, wasOther: false });
+					answers.push({
+						topic: q.topic,
+						question: q.question,
+						selected: stripped,
+						selectedAll: [stripped],
+						wasOther: false,
+						multiSelect: false,
+					});
 				} else {
-					// RPC inline-textarea path: any free-text the client returned that
-					// doesn't match a numbered option.
 					answers.push({
 						topic: q.topic,
 						question: q.question,
 						selected: choice.trim(),
+						selectedAll: [choice.trim()],
 						wasOther: true,
+						multiSelect: false,
 					});
 				}
 			}
 
 			const summary = answers
-				.map((a) => `- [${a.topic}] ${a.selected}${a.wasOther ? " (free-text)" : ""}`)
+				.map((a) => {
+					const txt = a.multiSelect ? `[${a.selectedAll.join(" + ")}]` : a.selected;
+					return `- [${a.topic}] ${txt}${a.wasOther ? " (incl. free-text)" : ""}`;
+				})
 				.join("\n");
 			return {
 				content: [{ type: "text", text: `User responses:\n${summary}` }],

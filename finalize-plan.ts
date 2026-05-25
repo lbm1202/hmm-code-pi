@@ -87,7 +87,21 @@ export function registerFinalizePlan(pi: ExtensionAPI, state: ModeState) {
 				};
 			}
 
-			const choice = await ctx.ui.select(`Plan saved → ${planPath}\n\nWhat next?`, [
+			// Include the plan body in the select prompt so CLI users can
+			// review the full plan (summary + design + steps + validation +
+			// docs) before committing to new-session / current-session / revise.
+			// The header lines + path stay at the top; everything below "—" is
+			// the plan markdown. VS Code clients get a richer inline preview
+			// via their tool-call renderer, so this matters mostly for the TUI.
+			const prompt = [
+				`Plan saved → ${planPath}`,
+				"",
+				planMarkdown.trim(),
+				"",
+				"───────────────────────────────",
+				"What next?",
+			].join("\n");
+			const choice = await ctx.ui.select(prompt, [
 				CHOICE_NEW,
 				CHOICE_CURRENT,
 				CHOICE_REVISE,
