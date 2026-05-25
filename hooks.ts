@@ -39,7 +39,7 @@ export function registerHooks(rt: Runtime): void {
 		};
 	});
 
-	pi.on("session_start", async (_event, ctx) => {
+	pi.on("session_start", async (event, ctx) => {
 		// Clear scrollback so prior shell output doesn't bleed into Pi's UI.
 		// Use isTTY (not ctx.hasUI): in RPC mode hasUI is true but stdout is a
 		// pipe to the parent, so raw ANSI bytes would corrupt JSON lines.
@@ -53,6 +53,20 @@ export function registerHooks(rt: Runtime): void {
 
 		state.setModes(loadModes(ctx.cwd));
 		writeExampleConfigIfMissing();
+
+		// On reload, ctx.reload() refreshes settingsManager but NOT the
+		// modelRegistry — its cache of custom models.json + dynamic provider
+		// configs becomes stale. Explicit refresh here re-reads models.json
+		// and reapplies provider configs (after ctx.reload's resetApiProviders
+		// cleared them). Skip on cold-boot ("startup") since the registry's
+		// constructor already calls loadModels.
+		if ((event as any)?.reason === "reload") {
+			try {
+				(ctx as any).modelRegistry?.refresh?.();
+			} catch (err) {
+				console.error("[modes:hooks] modelRegistry.refresh failed:", err);
+			}
+		}
 
 		const kb = ensureKeybindingsOverride();
 		const qs = ensureQuietStartup();

@@ -57,11 +57,15 @@ export function registerCommands(rt: Runtime): void {
 	});
 
 	pi.registerCommand("reload-runtime", {
-		description: "Reload extensions/keybindings/skills/themes (RPC-safe; mirrors built-in /reload).",
+		description: "Reload extensions/keybindings/skills/themes + re-read models.json (RPC-safe).",
 		handler: async (_args, ctx) => {
 			try {
+				// ctx.reload() refreshes settingsManager + extensions and emits
+				// session_start(reason="reload") — our hooks.ts handler picks
+				// that up and calls ctx.modelRegistry.refresh() with the fresh
+				// post-reload ctx, so models.json edits become visible.
 				await (ctx as any).reload?.();
-				ctx.ui.notify("Reloaded extensions + settings.", "info");
+				ctx.ui.notify("Reloaded extensions + settings + models.", "info");
 			} catch (err) {
 				ctx.ui.notify(`Reload failed: ${err}`, "error");
 			}
