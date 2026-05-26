@@ -19,7 +19,7 @@ plan ─────────────────────────
 ### 사용자 명시 전환
 - 슬래시: `/mode code`, `/mode plan`, `/mode debug`, `/mode ask`
 - 슬래시 인자 없음: `/mode` → picker (4개 모드 + 현재 모드 표시)
-- 단축키 (TUI): `Shift+Tab` / `Ctrl+Alt+M` 순환
+- 단축키 (TUI): `Tab` / `Ctrl+Alt+M` 순환 (`Shift+Tab` 은 Pi autocomplete)
 - VS Code: 푸터의 mode picker 클릭
 
 전환 즉시 `state.apply(name)` → 모델/thinking/activeTools 갱신 + system

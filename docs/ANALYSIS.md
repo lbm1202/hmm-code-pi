@@ -28,7 +28,7 @@
 1. `new ModeState(pi)` — 상태 컨테이너 생성
 2. 7개 툴 등록: `ask_user`, `request_mode_switch`, `finalize_plan`, `todo_write` + auto-title 리스너
 3. 4개 커맨드: `/mode`, `/mode-set`, `/plan-execute`, `/reset`
-4. 4개 단축키: `Shift+Tab`, `Ctrl+Alt+M`, `Alt+T`, `Alt+X`
+4. 4개 단축키: `Tab`, `Ctrl+Alt+M`, `Alt+T`, `Alt+X`
 5. 12개 이벤트 훅 (`before_provider_request` x2, `before_agent_start`, `session_start`, `model_select`, `thinking_level_select`, `message_end`, `session_before_compact`, `session_compact`, `turn_end`, `agent_end` …)
 
 ### 상태 변이 위치 (가변 상태)
@@ -58,7 +58,7 @@
 |---|---|---|
 | `ui.ts` | `GLYPHS`, `renderBigText`, `centerLines`, `ansi24`, `dimText`, `fmtTokens`, `abbreviateCwd`, 배너 상수 | ~150 |
 | `config-io.ts` | `ensureKeybindingsOverride`, `ensureQuietStartup`, `updateModeConfigField`, `writeExampleConfigIfMissing`, `arraysEqual` | ~170 |
-| `shortcuts.ts` | `Alt+T` thinking-toggle (binary vs cycle 로직), `Alt+X` reset, `Shift+Tab` / `Ctrl+Alt+M` cycle | ~100 |
+| `shortcuts.ts` | `Alt+T` thinking-toggle (binary vs cycle 로직), `Alt+X` reset, `Tab` / `Ctrl+Alt+M` cycle | ~100 |
 | `commands.ts` | `/mode`, `/mode-set`, `/plan-execute`, `/reset` 핸들러 | ~250 |
 | `hooks.ts` | `before_provider_request` x2, `before_agent_start`, `session_start` (헤더/푸터/에디터 설정 포함), `model_select`, `thinking_level_select`, `message_end`, `turn_end`, `agent_end` | ~280 |
 | `plans.ts` | `findLatestPlan`, plans 디렉토리 상수 (finalize-plan.ts 의 `uniquePlanPath` 와 통합 가능) | ~40 |
@@ -148,7 +148,7 @@ function defineTool(pi, name, def, handler) {
 `/mode [name]`, `/mode-set`, `/plan-execute`, `/reset`
 
 ### 단축키
-`Shift+Tab`, `Ctrl+Alt+M`, `Alt+T`, `Alt+X`
+`Tab`, `Ctrl+Alt+M`, `Alt+T`, `Alt+X`
 
 ### 툴 이름 & 시그니처
 - `ask_user(questions: [{topic, question, options: [{label, description?}]}])`
@@ -213,7 +213,7 @@ plan/debug: high · code: medium · ask: off
 | `config-io.ts` | 179 | ensureKeybindingsOverride, ensureQuietStartup, updateModeConfigField, writeExampleConfigIfMissing, EXAMPLE_CONFIG, KEYBINDING_OVERRIDES, DESIRED_SETTINGS |
 | `runtime.ts` | 34 | Runtime 컨텍스트 (editorInstance, invalidateFooter, requestRender 공유 refs) |
 | `commands.ts` | 287 | /mode, /mode-set, /plan-execute, /reset (+ 공유 resetHandler) |
-| `shortcuts.ts` | 120 | Shift+Tab, Ctrl+Alt+M, Alt+T (thinking toggle), Alt+X (reset) |
+| `shortcuts.ts` | 120 | Tab, Ctrl+Alt+M, Alt+T (thinking toggle), Alt+X (reset) |
 | `hooks.ts` | 288 | before_provider_request x2, before_agent_start, session_start (header/footer/editor), model/thinking/message_end, auto-compact, agent_end plan dispatch |
 
 ### 변경된 기존 파일

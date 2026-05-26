@@ -46,15 +46,18 @@ export const EXAMPLE_CONFIG = `{
 }
 `;
 
-// Modes wants Tab and Shift+Tab. Both are reserved by Pi built-ins
-// (tui.input.tab, app.thinking.cycle). User-level keybindings.json overrides
-// the defaults — the extension manages this so installers don't edit by hand.
+// Modes wants Tab for mode cycle and Shift+Tab for Pi's autocomplete.
+// Pi defaults: Tab → tui.input.tab (autocomplete), Shift+Tab → app.thinking.cycle.
+// We swap: Tab is freed for our cycleMode shortcut (shortcuts.ts) by moving
+// autocomplete to Shift+Tab, and we move thinking-cycle to Ctrl+Shift+T so it
+// doesn't collide with the new Shift+Tab autocomplete binding.
 const KEYBINDING_OVERRIDES: Record<string, string[]> = {
+	"tui.input.tab": ["shift+tab"],
 	"app.thinking.cycle": ["shift+ctrl+t"],
 	"app.thinking.toggle": [],
 	"app.tree.filter.noTools": [],
 };
-const KEYBINDING_OVERRIDES_TO_REMOVE: string[] = ["tui.input.tab"];
+const KEYBINDING_OVERRIDES_TO_REMOVE: string[] = [];
 
 const DESIRED_SETTINGS: Record<string, unknown> = {
 	quietStartup: true,

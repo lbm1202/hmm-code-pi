@@ -1,4 +1,4 @@
-// Keyboard shortcuts: mode cycle (Shift+Tab, Ctrl+Alt+M), thinking toggle
+// Keyboard shortcuts: mode cycle (Tab, Ctrl+Alt+M), thinking toggle
 // (Alt+T) and reset (Alt+X).
 
 import { Key } from "@earendil-works/pi-tui";
@@ -20,10 +20,11 @@ export function registerShortcuts(rt: Runtime): void {
 		await state.apply(next, ctx);
 	};
 
-	// Shift+Tab cycles modes. Tab itself stays on Pi's built-in autocomplete.
-	// Pi reserves Shift+Tab for app.thinking.cycle by default; our keybindings
-	// override (see config-io.ts) reassigns that to Ctrl+Shift+T.
-	pi.registerShortcut(Key.shift("tab"), {
+	// Tab cycles modes. Pi's built-in autocomplete (tui.input.tab) is
+	// reassigned to Shift+Tab via the keybindings override (config-io.ts).
+	// Pi's default Shift+Tab → app.thinking.cycle is moved to Ctrl+Shift+T
+	// by the same override.
+	pi.registerShortcut(Key.tab, {
 		description: "Cycle mode (code → plan → debug → ask)",
 		handler: cycleMode,
 	});

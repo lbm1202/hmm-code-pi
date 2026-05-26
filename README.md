@@ -36,7 +36,7 @@ git clone https://github.com/lbm1202/hmm-code-pi ~/.pi/agent/extensions/modes
 Pi 가 다음 시작 시 자동 로드. 첫 실행에 다음 파일들 자동 생성:
 - `~/.pi/agent/modes.example.json` — 모드 설정 템플릿
 - `~/.pi/agent/permissions.example.json` — 권한 룰 템플릿
-- `~/.pi/agent/keybindings.json` — Shift+Tab / Alt+T / Alt+X 자동 install
+- `~/.pi/agent/keybindings.json` — Tab(모드 순환) / Shift+Tab(autocomplete) / Alt+T / Alt+X 자동 install
 - `~/.pi/agent/settings.json` — quietStartup, hideThinkingBlock
 
 ---
@@ -85,7 +85,7 @@ Pi 가 다음 시작 시 자동 로드. 첫 실행에 다음 파일들 자동 �
 
 | 키 | 동작 |
 |---|---|
-| `Shift+Tab` / `Ctrl+Alt+M` | 모드 순환 (code → plan → debug → ask) |
+| `Tab` / `Ctrl+Alt+M` | 모드 순환 (code → plan → debug → ask). `Shift+Tab` = Pi 자동완성 |
 | `Alt+T` | thinking 레벨 토글 (provider-aware) |
 | `Alt+X` | model + thinking 을 모드 default 로 reset |
 
@@ -133,7 +133,7 @@ Pi 가 다음 시작 시 자동 로드. 첫 실행에 다음 파일들 자동 �
 ├── config-io.ts         # modes.json / keybindings.json / settings.json I/O
 ├── state.ts             # ModeState (apply/reset/footer), pushStatus for RPC
 ├── commands.ts          # /mode, /mode-set, /plan-execute, /reset, /reload-runtime, /auto-approve
-├── shortcuts.ts         # Shift+Tab, Ctrl+Alt+M, Alt+T, Alt+X
+├── shortcuts.ts         # Tab, Ctrl+Alt+M, Alt+T, Alt+X
 ├── hooks.ts             # session_start, before_agent_start (AGENTS.md), before_provider_request, agent_end (deferred dispatch)
 ├── ask-user.ts          # multi-question card tool
 ├── request-mode-switch.ts  # 모드 전환 제안 (carry-over deferred)
