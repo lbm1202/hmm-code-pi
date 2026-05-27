@@ -107,6 +107,8 @@ export async function autoApproveHandler(
 	} catch {
 		/* setStatus may not exist on every UI surface */
 	}
+	rt.invalidateFooter?.();
+	rt.requestRender();
 }
 
 /** Reset handler — shared by /reset and Alt+X (see shortcuts.ts). */

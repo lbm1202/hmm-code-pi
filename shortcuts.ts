@@ -1,11 +1,11 @@
 // Keyboard shortcuts: mode cycle (Tab, Ctrl+Alt+M), thinking toggle
-// (Alt+T) and reset (Alt+X).
+// (Alt+T), reset (Alt+X), auto-approve toggle (Ctrl+Shift+A).
 
 import { Key } from "@earendil-works/pi-tui";
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { MODE_NAMES } from "./config";
 import { BINARY_THINKING_FORMATS } from "./constants";
-import { resetHandler } from "./commands";
+import { autoApproveHandler, resetHandler } from "./commands";
 import type { Runtime } from "./runtime";
 
 const CYCLE_LEVELS = ["off", "minimal", "low", "medium", "high"] as const;
@@ -53,6 +53,11 @@ export function registerShortcuts(rt: Runtime): void {
 	pi.registerShortcut(Key.alt("x"), {
 		description: "Reset model + thinking to current mode's defaults",
 		handler: async (ctx) => resetHandler(rt, ctx),
+	});
+
+	pi.registerShortcut(Key.ctrlShift("a"), {
+		description: "Toggle auto-approve (session bypass for permission ask)",
+		handler: async (ctx) => autoApproveHandler(rt, ctx, ""),
 	});
 }
 

@@ -285,6 +285,7 @@ export class ModeState {
 		const thinkingLevel = this.pi.getThinkingLevel();
 		const thinkingInner = ` ${thinkingLevel} `;
 		const box1Cells = [modeInner, modelInner, thinkingInner];
+		if (this.autoApprove) box1Cells.push(" auto-approve ");
 		if (this.isAnyOverridden()) box1Cells.push(" Alt+X → default ");
 		const box1Dashes = box1Cells.map((c) => "─".repeat(c.length));
 		const box1Top = `${box1Dashes.join("┬")}┐`;
