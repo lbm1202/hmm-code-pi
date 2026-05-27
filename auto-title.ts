@@ -73,12 +73,8 @@ export function registerAutoTitle(pi: ExtensionAPI, state: ModeState): void {
 		if (!firstUserEntry) return;
 
 		const picked = resolveTitleModel(ctx, state);
-		if (!picked) {
-			console.error("[auto-title] no model available");
-			return;
-		}
+		if (!picked) return;
 		const model = picked.model;
-		console.error("[auto-title] using", picked.via);
 
 		// Mark BEFORE async to prevent re-entry on subsequent message_end events.
 		titledSessions.add(sessionId);
@@ -95,11 +91,12 @@ export function registerAutoTitle(pi: ExtensionAPI, state: ModeState): void {
 			if (auth?.ok) {
 				resolvedApiKey = auth.apiKey;
 				resolvedHeaders = auth.headers;
-			} else if (auth && !auth.ok) {
-				console.error("[auto-title] auth resolve failed:", auth.error);
 			}
-		} catch (err) {
-			console.error("[auto-title] auth lookup threw:", err);
+			// Auth-resolve failure is silent — auto-title is a background job;
+			// surfacing it as stderr leaks into the user's TUI chat. The session
+			// just won't get an auto-title; user notices missing title themselves.
+		} catch {
+			/* silent — same reason as above */
 		}
 
 		let title = "";
@@ -128,11 +125,9 @@ export function registerAutoTitle(pi: ExtensionAPI, state: ModeState): void {
 					chat_template_kwargs: { enable_thinking: false, preserve_thinking: false },
 				},
 			} as any);
-			const stopReason = (result as any)?.stopReason;
-			const errorMessage = (result as any)?.errorMessage;
-			if (stopReason === "error" || errorMessage) {
-				console.error("[auto-title] LLM error:", errorMessage, "stopReason:", stopReason);
-			}
+			// LLM error / stopReason swallowed — fall through to the userText
+			// fallback below. Diagnostics suppressed for the same reason as
+			// the auth-resolve path (chat-noise vs background-job).
 			title = pickTitle(extractText((result as any)?.content));
 			if (!title) {
 				const thinking = extractThinking((result as any)?.content);
@@ -141,8 +136,8 @@ export function registerAutoTitle(pi: ExtensionAPI, state: ModeState): void {
 					title = pickTitle(lastLine);
 				}
 			}
-		} catch (err) {
-			console.error("[auto-title] completeSimple threw:", err);
+		} catch {
+			/* silent — fall through to userText pickTitle fallback */
 		}
 
 		if (!title) title = pickTitle(userText);
