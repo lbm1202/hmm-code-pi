@@ -1,0 +1,51 @@
+{
+  "name": "hmm-code-pi",
+  "version": "0.1.0",
+  "description": "Pi coding agent extension — plan/code/debug/ask modes + permissions + AGENTS.md auto-injection",
+  "author": "lbm1202",
+  "license": "MIT",
+  "type": "module",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/lbm1202/hmm-code-pi.git"
+  },
+  "homepage": "https://github.com/lbm1202/hmm-code-pi#readme",
+  "bugs": {
+    "url": "https://github.com/lbm1202/hmm-code-pi/issues"
+  },
+  "keywords": [
+    "pi-package",
+    "pi",
+    "pi-coding-agent",
+    "modes",
+    "permissions",
+    "agents-md"
+  ],
+  "files": [
+    "*.ts",
+    "permissions/**/*.ts",
+    "docs/**/*.md",
+    "README.md"
+  ],
+  "pi": {
+    "extensions": [
+      "./index.ts"
+    ]
+  },
+  "peerDependencies": {
+    "@earendil-works/pi-coding-agent": "*",
+    "@earendil-works/pi-ai": "*",
+    "@earendil-works/pi-tui": "*"
+  },
+  "peerDependenciesMeta": {
+    "@earendil-works/pi-coding-agent": {
+      "optional": true
+    },
+    "@earendil-works/pi-ai": {
+      "optional": true
+    },
+    "@earendil-works/pi-tui": {
+      "optional": true
+    }
+  }
+}

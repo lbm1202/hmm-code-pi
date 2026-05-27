@@ -24,9 +24,7 @@ export const BINARY_THINKING_FORMATS = new Set(["qwen-chat-template", "qwen", "z
  *  logo (capital H + lowercase x-height m's). The lowercase glyphs in ui.ts
  *  leave row 0 empty so they sit at x-height next to the cap.
  *
- *  These are the ONLY declarations of version/author for the Pi extension —
- *  Pi loads extensions as raw .ts files without a package.json, so this is
- *  the single source of truth. Bump EXT_VERSION on each release. */
+ *  When bumping EXT_VERSION, also bump `version` in package.json. */
 export const BANNER_TEXT = "Hmm";
 export const EXT_VERSION = "v0.1.0";
 export const AUTHOR = "lbm1202";
