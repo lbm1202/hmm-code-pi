@@ -87,20 +87,22 @@ export function registerFinalizePlan(pi: ExtensionAPI, state: ModeState) {
 				};
 			}
 
-			// Include the plan body in the select prompt so CLI users can
-			// review the full plan (summary + design + steps + validation +
-			// docs) before committing to new-session / current-session / revise.
-			// The header lines + path stay at the top; everything below "—" is
-			// the plan markdown. VS Code clients get a richer inline preview
-			// via their tool-call renderer, so this matters mostly for the TUI.
-			const prompt = [
-				`Plan saved → ${planPath}`,
-				"",
-				planMarkdown.trim(),
-				"",
-				"───────────────────────────────",
-				"What next?",
-			].join("\n");
+			// TUI gets the full plan in the prompt (no inline tool-call body
+			// renderer). RPC clients (VS Code webview) already render the plan
+			// via renderFinalizePlanPreview in the chat — embedding the
+			// markdown a second time in the modal duplicates everything. So
+			// we include the body only when stdout is a real TTY.
+			const isTui = !!process.stdout.isTTY;
+			const prompt = isTui
+				? [
+						`Plan saved → ${planPath}`,
+						"",
+						planMarkdown.trim(),
+						"",
+						"───────────────────────────────",
+						"What next?",
+					].join("\n")
+				: `Plan saved → ${planPath}\n\nWhat next?`;
 			const choice = await ctx.ui.select(prompt, [
 				CHOICE_NEW,
 				CHOICE_CURRENT,
