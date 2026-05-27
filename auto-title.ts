@@ -82,70 +82,91 @@ export function registerAutoTitle(pi: ExtensionAPI, state: ModeState): void {
 		const userText = extractText(firstUserEntry.message?.content);
 		const assistantText = extractText(event.message?.content);
 
-		// Resolve apiKey/headers — ctx.modelRegistry.find() returns the Model
-		// WITHOUT credentials (those live in AuthStorage). Pass via options.
-		let resolvedApiKey: string | undefined;
-		let resolvedHeaders: Record<string, string> | undefined;
-		try {
-			const auth = await ctx.modelRegistry?.getApiKeyAndHeaders?.(model);
-			if (auth?.ok) {
-				resolvedApiKey = auth.apiKey;
-				resolvedHeaders = auth.headers;
-			}
-			// Auth-resolve failure is silent — auto-title is a background job;
-			// surfacing it as stderr leaks into the user's TUI chat. The session
-			// just won't get an auto-title; user notices missing title themselves.
-		} catch {
-			/* silent — same reason as above */
-		}
-
-		let title = "";
-		try {
-			const context = {
-				systemPrompt: TITLE_SYSTEM_PROMPT,
-				messages: [
-					{
-						role: "user" as const,
-						content: [
-							{
-								type: "text" as const,
-								text: `Conversation so far:\n\nUser: ${userText.slice(0, 600)}\n\nAssistant: ${assistantText.slice(0, 600)}\n\nNow write ONLY the title.`,
-							},
-						],
-						timestamp: Date.now(),
-					},
-				],
-				tools: [],
-			};
-			const result = await completeSimple(model as any, context, {
-				apiKey: resolvedApiKey,
-				headers: resolvedHeaders,
-				reasoning: "off",
-				metadata: {
-					chat_template_kwargs: { enable_thinking: false, preserve_thinking: false },
-				},
-			} as any);
-			// LLM error / stopReason swallowed — fall through to the userText
-			// fallback below. Diagnostics suppressed for the same reason as
-			// the auth-resolve path (chat-noise vs background-job).
-			title = pickTitle(extractText((result as any)?.content));
-			if (!title) {
-				const thinking = extractThinking((result as any)?.content);
-				if (thinking) {
-					const lastLine = thinking.split("\n").filter((l) => l.trim()).pop() ?? "";
-					title = pickTitle(lastLine);
-				}
-			}
-		} catch {
-			/* silent — fall through to userText pickTitle fallback */
-		}
-
-		if (!title) title = pickTitle(userText);
-		if (!title) return;
-
-		const setFn = (pi as any).setSessionName ?? ctx.setSessionName;
-		if (typeof setFn === "function") setFn(title);
+		// Fire-and-forget the LLM call. Awaiting it inside the message_end
+		// handler holds Pi back from entering its idle state — the TUI
+		// "Working..." loader stays up and the VS Code status row lingers
+		// because Pi thinks our extension is still working. Detaching the
+		// async work lets message_end resolve immediately; the title still
+		// arrives a moment later via setSessionName, which emits
+		// session_info_changed for the UI to pick up.
+		void runTitleGen({
+			pi,
+			ctx,
+			model,
+			userText,
+			assistantText,
+		});
 	});
+}
+
+interface TitleGenArgs {
+	pi: ExtensionAPI;
+	ctx: any;
+	model: unknown;
+	userText: string;
+	assistantText: string;
+}
+
+async function runTitleGen(args: TitleGenArgs): Promise<void> {
+	const { pi, ctx, model, userText, assistantText } = args;
+
+	// Resolve apiKey/headers — ctx.modelRegistry.find() returns the Model
+	// WITHOUT credentials (those live in AuthStorage). Pass via options.
+	let resolvedApiKey: string | undefined;
+	let resolvedHeaders: Record<string, string> | undefined;
+	try {
+		const auth = await ctx.modelRegistry?.getApiKeyAndHeaders?.(model);
+		if (auth?.ok) {
+			resolvedApiKey = auth.apiKey;
+			resolvedHeaders = auth.headers;
+		}
+	} catch {
+		/* silent — background job */
+	}
+
+	let title = "";
+	try {
+		const context = {
+			systemPrompt: TITLE_SYSTEM_PROMPT,
+			messages: [
+				{
+					role: "user" as const,
+					content: [
+						{
+							type: "text" as const,
+							text: `Conversation so far:\n\nUser: ${userText.slice(0, 600)}\n\nAssistant: ${assistantText.slice(0, 600)}\n\nNow write ONLY the title.`,
+						},
+					],
+					timestamp: Date.now(),
+				},
+			],
+			tools: [],
+		};
+		const result = await completeSimple(model as any, context, {
+			apiKey: resolvedApiKey,
+			headers: resolvedHeaders,
+			reasoning: "off",
+			metadata: {
+				chat_template_kwargs: { enable_thinking: false, preserve_thinking: false },
+			},
+		} as any);
+		title = pickTitle(extractText((result as any)?.content));
+		if (!title) {
+			const thinking = extractThinking((result as any)?.content);
+			if (thinking) {
+				const lastLine = thinking.split("\n").filter((l) => l.trim()).pop() ?? "";
+				title = pickTitle(lastLine);
+			}
+		}
+	} catch {
+		/* silent — fall through to userText pickTitle fallback */
+	}
+
+	if (!title) title = pickTitle(userText);
+	if (!title) return;
+
+	const setFn = (pi as any).setSessionName ?? ctx.setSessionName;
+	if (typeof setFn === "function") setFn(title);
 }
 
 function extractText(content: any): string {
