@@ -42,6 +42,29 @@ export const EXAMPLE_CONFIG = `{
       "activeTools": ["read", "grep"],
       "temperature": 0.5
     }
+  },
+  "autoTitle": {
+    "provider": "openai",
+    "id": "gpt-4.1-nano"
+  },
+  "modelAllowlist": {
+    "openai-codex": ["gpt-5.5"]
+  },
+  "permissions": {
+    "rules": {
+      "read":  { "*.key": "ask", "*.pem": "ask" },
+      "bash":  { "rm -rf /*": "deny", "sudo *": "ask" }
+    },
+    "external_directory": {
+      "~/Downloads/**": "allow"
+    },
+    "modes": {
+      "debug": {
+        "rules": {
+          "bash": { "pytest *": "allow", "npm test *": "allow" }
+        }
+      }
+    }
   }
 }
 `;

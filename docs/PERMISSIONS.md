@@ -13,12 +13,18 @@
 ## 1. 평가 계층 (낮은 → 높은 우선순위)
 
 ```
-base defaults                    ← BASE_DEFAULTS (코드)
-  └─ mode defaults               ← MODE_DEFAULTS[currentMode] (코드)
-       └─ ~/.pi/agent/permissions.json     ← global user
-            └─ ${cwd}/.pi/permissions.json ← project user
-                 └─ ${cwd}/.piignore       ← 무조건 deny (별도 layer)
+base defaults                       ← BASE_DEFAULTS (코드)
+  └─ mode defaults                  ← MODE_DEFAULTS[currentMode] (코드)
+       └─ ~/.pi/agent/modes.json:permissions   ← global user (정규)
+       └─ (fallback) ~/.pi/agent/permissions.json  ← legacy 위치, 통합 전 설치본
+            └─ ${cwd}/.pi/permissions.json     ← project user
+                 └─ ${cwd}/.piignore           ← 무조건 deny (별도 layer)
 ```
+
+> 글로벌 권한은 **`modes.json` 의 `permissions` 키 안**에 들어감 (전체 모드
+> 설정과 한 파일 통합). 기존 standalone `permissions.json` 파일이 있으면
+> 그대로 fallback 으로 읽혀서 동작은 유지 — 통합하려면 그 내용을
+> `modes.json` 의 `permissions` 필드로 옮긴 후 `permissions.json` 삭제.
 
 같은 layer 안에서는 **last-match wins** (Kilo 와 동일). 룰 객체의 키 순서대로
 훑어서 마지막에 매칭된 verdict 가 그 layer 의 결과.
@@ -108,10 +114,14 @@ ask:   {
 
 ## 3. 사용자 설정 파일
 
-### 글로벌: `~/.pi/agent/permissions.json`
+### 글로벌: `~/.pi/agent/modes.json` 의 `permissions` 키
 
-첫 실행 시 `permissions.example.json` 이 자동 생성됨. 복사해서 `.example`
-떼면 활성화.
+권한 룰은 모드 설정과 같은 파일에 함께 있음. 첫 실행 시
+`modes.example.json` 이 자동 생성되며 거기에 `permissions` 섹션 예시
+포함. 그걸 `modes.json` 으로 복사해서 편집.
+
+기존 standalone `~/.pi/agent/permissions.json` 도 fallback 으로 읽힘
+(통합 전 설치본 호환). modes.json:permissions 가 있으면 그게 우선.
 
 ### 프로젝트: `${cwd}/.pi/permissions.json`
 

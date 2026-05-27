@@ -1,23 +1,30 @@
-// Disk loader for permission files. We read JSON on demand with mtime-keyed
-// caching so the hook never blocks on disk I/O after the first call per file.
-// Global (~/.pi/agent/permissions.json) and project (${cwd}/.pi/permissions.json)
-// are loaded independently and returned in evaluation order.
+// Disk loader for permission files.
+//
+// As of the modes-config consolidation, the canonical home for global
+// permissions is `~/.pi/agent/modes.json:permissions`. We still fall back
+// to the legacy standalone `~/.pi/agent/permissions.json` so existing
+// installs keep working, but new writes (from the VS Code settings panel)
+// land in modes.json.
+//
+// Project-level permissions remain as `${cwd}/.pi/permissions.json` —
+// projects don't have a per-project modes.json today, so keeping them
+// separate is fine.
 
-import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync, statSync } from "node:fs";
 import { homedir } from "node:os";
-import { dirname, join } from "node:path";
+import { join } from "node:path";
 import type { Permissions } from "./types";
 
-const GLOBAL_PATH = join(homedir(), ".pi", "agent", "permissions.json");
-const GLOBAL_EXAMPLE_PATH = join(homedir(), ".pi", "agent", "permissions.example.json");
+const MODES_JSON_PATH = join(homedir(), ".pi", "agent", "modes.json");
+const LEGACY_GLOBAL_PATH = join(homedir(), ".pi", "agent", "permissions.json");
 
 interface Cache {
 	mtime: number;
-	value: Permissions;
+	value: Permissions | undefined;
 }
 const cache = new Map<string, Cache>();
 
-function readJsonCached(path: string): Permissions | undefined {
+function readJsonCached(path: string, pickKey?: string): Permissions | undefined {
 	if (!existsSync(path)) return undefined;
 	let mtime: number;
 	try {
@@ -25,21 +32,29 @@ function readJsonCached(path: string): Permissions | undefined {
 	} catch {
 		return undefined;
 	}
-	const c = cache.get(path);
+	const cacheKey = pickKey ? `${path}#${pickKey}` : path;
+	const c = cache.get(cacheKey);
 	if (c && c.mtime === mtime) return c.value;
 	try {
 		const raw = readFileSync(path, "utf-8");
-		const parsed = JSON.parse(raw) as Permissions;
-		cache.set(path, { mtime, value: parsed });
-		return parsed;
+		const parsed = JSON.parse(raw) as Record<string, unknown>;
+		const value: Permissions | undefined = pickKey
+			? (parsed[pickKey] as Permissions | undefined)
+			: (parsed as Permissions);
+		cache.set(cacheKey, { mtime, value });
+		return value;
 	} catch (err) {
 		console.error(`[modes:permissions] failed to parse ${path}:`, err);
 		return undefined;
 	}
 }
 
+/** Global permissions: prefer modes.json:permissions, fall back to the
+ *  legacy standalone permissions.json so existing setups keep working. */
 export function loadGlobalPermissions(): Permissions | undefined {
-	return readJsonCached(GLOBAL_PATH);
+	const fromModes = readJsonCached(MODES_JSON_PATH, "permissions");
+	if (fromModes) return fromModes;
+	return readJsonCached(LEGACY_GLOBAL_PATH);
 }
 
 export function loadProjectPermissions(cwd: string | undefined): Permissions | undefined {
@@ -47,52 +62,9 @@ export function loadProjectPermissions(cwd: string | undefined): Permissions | u
 	return readJsonCached(join(cwd, ".pi", "permissions.json"));
 }
 
-const EXAMPLE_CONTENT = `// Pi modes extension — example permission overrides.
-// Copy this file to permissions.json (drop the .example) to activate.
-//
-// Built-in defaults already cover .env / external dirs / safe bash commands
-// (Kilo-aligned). Add only the rules you actually need below.
-//
-// Verdicts: "allow" | "ask" | "deny". Last matching rule wins per layer.
-// Pattern syntax: gitignore-style globs (*, **, ?). ~/ = home dir.
-
-{
-  "rules": {
-    "read":  {
-      // "*.key": "ask",
-      // "*.pem": "ask"
-    },
-    "bash": {
-      // "rm -rf /*": "deny",
-      // "sudo *":    "ask"
-    }
-  },
-  "external_directory": {
-    // "~/Downloads/**": "allow",
-    // "/var/**":         "deny"
-  },
-  "modes": {
-    "debug": {
-      "rules": {
-        "bash": {
-          // "pytest *":   "allow",
-          // "npm test *": "allow"
-        }
-      }
-    }
-  }
-}
-`;
-
-/** Drop ~/.pi/agent/permissions.example.json on first run so the user has a
- *  ready-to-edit template. Idempotent — does nothing if the file is already
- *  there or the parent directory can't be created. */
+/** Example template is no longer generated as a separate file — modes.json
+ *  itself documents the schema. Kept as a no-op for backward compat with
+ *  the registerPermissions wire-up. */
 export function writePermissionsExampleIfMissing(): void {
-	try {
-		if (existsSync(GLOBAL_EXAMPLE_PATH)) return;
-		mkdirSync(dirname(GLOBAL_EXAMPLE_PATH), { recursive: true });
-		writeFileSync(GLOBAL_EXAMPLE_PATH, EXAMPLE_CONTENT, "utf-8");
-	} catch (err) {
-		console.error("[modes:permissions] failed to write example file:", err);
-	}
+	/* intentionally empty */
 }

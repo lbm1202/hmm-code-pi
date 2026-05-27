@@ -40,6 +40,12 @@ export interface ModesFile {
 	 *  like openai-codex hardcode their model list in pi-ai and can't be
 	 *  trimmed at the registry level, so the filter is applied client-side. */
 	modelAllowlist?: Record<string, string[]>;
+	/** Permission rules consumed by the permission system (permissions/).
+	 *  Consolidated from the old standalone ~/.pi/agent/permissions.json so
+	 *  the whole extension config lives in modes.json. Schema is intentionally
+	 *  unknown to the loader (just passthrough) so the permissions module
+	 *  owns its own type. */
+	permissions?: Record<string, unknown>;
 }
 
 export const DEFAULT_MODES: Record<ModeName, ModeConfig> = {
@@ -145,5 +151,6 @@ export function loadModes(_cwd: string): ModesFile {
 		modelAliases: raw.modelAliases ?? {},
 		autoTitle: raw.autoTitle,
 		modelAllowlist: raw.modelAllowlist ?? {},
+		permissions: raw.permissions,
 	};
 }
