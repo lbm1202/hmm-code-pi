@@ -276,51 +276,70 @@ export class ModeState {
 		const rgb = MODE_COLORS[this.current];
 		const white: [number, number, number] = [240, 240, 240];
 
-		// Box 1: open-left mode trough + model cell, optionally + override hint cell.
-		// Colored per mode. The hint cell appears only when current model differs
-		// from the mode's configured default.
+		// Box 1: open-left mode trough + model cell, optionally + auto-approve
+		// and override hint cells. Colored per mode. Optional cells are dropped
+		// when the terminal is too narrow to fit them alongside box2 (token
+		// info) — essential cells (mode/model/thinking) always render.
 		const centered = centerText(this.current, MODE_FIELD_WIDTH);
 		const modeInner = ` ${centered} `;
 		const modelInner = ` ${this.modelLabel()} `;
 		const thinkingLevel = this.pi.getThinkingLevel();
 		const thinkingInner = ` ${thinkingLevel} `;
-		const box1Cells = [modeInner, modelInner, thinkingInner];
-		if (this.autoApprove) box1Cells.push(" auto-approve ");
-		if (this.isAnyOverridden()) box1Cells.push(" Alt+X → default ");
+
+		// Pre-build box2 so we know its width when deciding which box1 cells fit.
+		const cells = info.filter((s) => s && s.length > 0).map((s) => ` ${s} `);
+		const buildBox = (innerCells: string[]) => {
+			const dashes = innerCells.map((c) => "─".repeat(c.length));
+			return {
+				top: `┌${dashes.join("┬")}┐`,
+				mid: `│${innerCells.join("│")}│`,
+				bot: `└${dashes.map((d) => d).join("┴")}┘`,
+				width: dashes.reduce((n, d) => n + d.length, 0) + dashes.length + 1,
+			};
+		};
+		let box2: { top: string; mid: string; bot: string; width: number } | undefined;
+		if (cells.length > 0) box2 = buildBox(cells);
+
+		const usable = Math.max(0, width - 1); // -1 for Pi's hardcoded 1-col padding
+		const minGap = 2;
+
+		// Try most-detailed box1, fall back progressively if too wide for box2.
+		const candidates = [
+			[modeInner, modelInner, thinkingInner, this.autoApprove ? " auto-approve " : "", this.isAnyOverridden() ? " Alt+X → default " : ""].filter((c) => c.length > 0),
+			[modeInner, modelInner, thinkingInner, this.autoApprove ? " ✓auto " : "", this.isAnyOverridden() ? " ✱ " : ""].filter((c) => c.length > 0),
+			[modeInner, modelInner, thinkingInner],
+		];
+		let box1Cells = candidates[0];
+		for (const cand of candidates) {
+			const w = cand.reduce((n, c) => n + c.length, 0) + cand.length;
+			if (!box2 || w + box2.width + minGap <= usable) {
+				box1Cells = cand;
+				break;
+			}
+		}
 		const box1Dashes = box1Cells.map((c) => "─".repeat(c.length));
 		const box1Top = `${box1Dashes.join("┬")}┐`;
 		const box1Mid = `${box1Cells.join("│")}│`;
 		const box1Bot = `${box1Dashes.join("┴")}┘`;
 		const box1Width = box1Top.length;
 
-		// Box 2: fully-closed info box, always white. Each info[i] becomes its
-		// own cell with ┬/┴ dividers (same internal structure as box 1). The
-		// total width = content width — no stretching, no padding to terminal edge.
-		const cells = info.filter((s) => s && s.length > 0).map((s) => ` ${s} `);
-		let box2Top = "";
-		let box2Mid = "";
-		let box2Bot = "";
-		let box2Width = 0;
-		if (cells.length > 0) {
-			box2Top = `┌${cells.map((c) => "─".repeat(c.length)).join("┬")}┐`;
-			box2Mid = `│${cells.join("│")}│`;
-			box2Bot = `└${cells.map((c) => "─".repeat(c.length)).join("┴")}┘`;
-			box2Width = box2Top.length;
+		if (!box2) {
+			return [ansi24(box1Top, rgb), ansi24(box1Mid, rgb), ansi24(box1Bot, rgb)];
 		}
 
-		if (cells.length === 0) {
+		// If even the minimal box1 + box2 + min gap doesn't fit, drop box2
+		// rather than letting them overlap. Box1 has the essential state.
+		if (box1Width + box2.width + minGap > usable) {
 			return [ansi24(box1Top, rgb), ansi24(box1Mid, rgb), ansi24(box1Bot, rgb)];
 		}
 
 		// Right-align box2: spacer fills the gap between box1 and the right edge.
-		const usable = Math.max(0, width - 1); // -1 for Pi's hardcoded 1-col padding
-		const gapSize = Math.max(2, usable - box1Width - box2Width);
-		const gap = " ".repeat(gapSize);
+		const gap = " ".repeat(Math.max(minGap, usable - box1Width - box2.width));
 
 		return [
-			ansi24(box1Top, rgb) + gap + ansi24(box2Top, white),
-			ansi24(box1Mid, rgb) + gap + ansi24(box2Mid, white),
-			ansi24(box1Bot, rgb) + gap + ansi24(box2Bot, white),
+			ansi24(box1Top, rgb) + gap + ansi24(box2.top, white),
+			ansi24(box1Mid, rgb) + gap + ansi24(box2.mid, white),
+			ansi24(box1Bot, rgb) + gap + ansi24(box2.bot, white),
 		];
 	}
 
