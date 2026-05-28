@@ -9,6 +9,7 @@
 // Headless sessions (no UI surface) treat "ask" as a hard block so background
 // runs can't get stuck waiting for input that will never come.
 
+import { isAbsolute, relative } from "node:path";
 import type { Runtime } from "../runtime";
 import { BASE_DEFAULTS, MODE_DEFAULTS } from "./defaults";
 import { evaluate } from "./evaluator";
@@ -20,6 +21,22 @@ import {
 } from "./loader";
 import { loadIgnore } from "./piignore";
 import type { Permissions } from "./types";
+
+/** Match piignore.ts's expectation: workspace-relative path with forward
+ *  slashes. .piignore patterns are cwd-relative; an absolute path like
+ *  `/Users/x/work/secret.key` would never match `secret.key` (or `**​/secret.key`)
+ *  without this normalization, leaving piignore silently bypassable. */
+function toIgnoreSubject(p: string, cwd: string): string | undefined {
+	const fwd = p.replace(/\\/g, "/");
+	if (!isAbsolute(fwd)) return fwd;
+	const rel = relative(cwd, fwd).replace(/\\/g, "/");
+	// Outside cwd → piignore (which lives at cwd/.piignore) has no
+	// applicable rule. Skip rather than fall through with the absolute path,
+	// which would only match patterns like `/Users/**` that users almost
+	// never write.
+	if (rel.startsWith("..") || isAbsolute(rel)) return undefined;
+	return rel || ".";
+}
 
 export function registerPermissions(rt: Runtime): void {
 	const { pi, state } = rt;
@@ -38,7 +55,9 @@ export function registerPermissions(rt: Runtime): void {
 		if (ignore.hasRules()) {
 			const { paths } = extractPaths(toolName, input);
 			for (const p of paths) {
-				if (ignore.isBlocked(p)) {
+				const subject = toIgnoreSubject(p, cwd);
+				if (subject === undefined) continue;
+				if (ignore.isBlocked(subject)) {
 					return {
 						block: true,
 						reason: `Blocked by .piignore: ${p}`,
