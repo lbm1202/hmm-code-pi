@@ -8,7 +8,11 @@ import { findLatestPlan } from "./plans";
 import type { Runtime } from "./runtime";
 
 const THINKING_LEVELS = ["off", "minimal", "low", "medium", "high", "xhigh"] as const;
-const CYCLE_LEVELS = ["off", "minimal", "low", "medium", "high"] as const;
+// CYCLE_LEVELS includes xhigh — handleThinkingToggle's supportedAll filter
+// already drops unmapped levels per model, so models that don't declare xhigh
+// in thinkingLevelMap just skip it. Models that DO declare it (gpt-5.5, etc.)
+// now reachable via /thinking-toggle and Alt+T.
+const CYCLE_LEVELS = ["off", "minimal", "low", "medium", "high", "xhigh"] as const;
 type BinaryOnLevel = "minimal" | "low" | "medium" | "high" | "xhigh";
 
 // Module-level so /thinking-toggle and Alt+T share the same "remember last
