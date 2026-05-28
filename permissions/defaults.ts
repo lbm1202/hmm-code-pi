@@ -10,18 +10,26 @@ import type { Permissions } from "./types";
 export const BASE_DEFAULTS: Permissions = {
 	rules: {
 		read: {
-			"*": "allow",
+			"**": "allow",
+			// `*.env` alone only matches top-level — pair with `**/*.env` so
+			// nested secrets (config/.env, packages/foo/.env) also prompt.
 			"*.env": "ask",
+			"**/*.env": "ask",
 			"*.env.*": "ask",
+			"**/*.env.*": "ask",
 			"*.env.example": "allow",
+			"**/*.env.example": "allow",
 		},
-		edit: { "*": "allow" },
-		write: { "*": "allow" },
+		edit: { "**": "allow" },
+		write: { "**": "allow" },
 		bash: BASH_DEFAULT,
 	},
 	external_directory: {
 		// Anything outside the workspace cwd needs a confirm by default.
-		"*": "ask",
+		// `**` (recursive) not `*` (single segment) — path-mode glob `*` is
+		// `[^/]*` so it wouldn't match real absolute paths like `/etc/passwd`,
+		// silently downgrading "ask on external" to "allow".
+		"**": "ask",
 		// Carve-outs for paths Pi/our extensions naturally touch — asking
 		// every time we hit /tmp or ~/.pi would be unworkable.
 		"/tmp/**": "allow",
@@ -33,7 +41,10 @@ export const BASE_DEFAULTS: Permissions = {
  *  Kilo's plan agent rule that permits ".kilo/plans/*.md" + ".opencode/plans/*.md".
  *  Pi's finalize_plan writes to .pi/plans/, so that's our allowlist. */
 const PLAN_WRITABLE: Record<string, "allow" | "deny" | "ask"> = {
-	"*": "deny",
+	// `**` not `*` — path-mode glob `*` is single-segment, so `*: deny` would
+	// silently miss nested files. ActiveTools layer is the primary defense
+	// (LLM doesn't see edit/write), but this is defense in depth.
+	"**": "deny",
 	".pi/plans/*.md": "allow",
 	".pi/plans/**/*.md": "allow",
 };
@@ -58,9 +69,10 @@ export const MODE_DEFAULTS: Record<ModeName, Permissions> = {
 		rules: {
 			bash: BASH_READ_ONLY,
 			// Defense in depth — even if a future change adds edit/write to
-			// ask's activeTools, the permission layer still denies.
-			edit: { "*": "deny" },
-			write: { "*": "deny" },
+			// ask's activeTools, the permission layer still denies. `**`
+			// (recursive) so nested paths are also covered.
+			edit: { "**": "deny" },
+			write: { "**": "deny" },
 		},
 	},
 };
