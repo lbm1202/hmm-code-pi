@@ -73,6 +73,26 @@ export const BASH_DEFAULT: Record<string, Verdict> = {
 	"unzip *": "allow",
 	"gzip *": "allow",
 	"gunzip *": "allow",
+	// Shell metacharacters — even in "full shell" modes, never auto-allow
+	// a chain that an allowed prefix (`cat *`) would otherwise silently
+	// launch a denied suffix (`| rm -rf /`) through. We downgrade these to
+	// ask (not deny) since code/debug legitimately use pipes/redirects all
+	// the time — the user gets one confirm per composed command instead of
+	// fully blocking. Last-match-wins means this trumps earlier allows.
+	"*\n*": "ask",
+	"*<(*": "ask",
+	"*|*": "ask",
+	"*;*": "ask",
+	"*&&*": "ask",
+	"*||*": "ask",
+	"*$(*": "ask",
+	"*`*": "ask",
+	"*>*": "ask",
+	"* > *": "ask",
+	"*>>*": "ask",
+	"* >> *": "ask",
+	"*>|*": "ask",
+	"* >| *": "ask",
 };
 
 export const BASH_READ_ONLY: Record<string, Verdict> = {
