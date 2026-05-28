@@ -122,18 +122,32 @@ function evaluateExternal(input: EvaluateInput, abs: string): Verdict {
 export function evaluate(input: EvaluateInput): Decision {
 	const key = toolKeyFor(input.toolName);
 
-	// Bash: match the full command against the bash ruleset. No path/external
-	// logic since bash takes a free-form string. Shell-mode matching so `*`
-	// covers `/` (`"rm *"` should catch `"rm /tmp/foo"`).
+	// Bash: match the full command against the bash ruleset (shell-mode `*`
+	// covers `/`), then ALSO extract absolute paths from the command and run
+	// them through the external_directory layer. Without this, `bash "cat
+	// /etc/passwd"` would only check the bash rules — and our bash rules
+	// don't know anything about /etc, /private, ~/.ssh, etc.
 	if (key === "bash") {
 		const cmd = input.bashCommand ?? "";
-		const v = evaluateOne(input, cmd, "bash", /* pathMode */ false);
+		let v = evaluateOne(input, cmd, "bash", /* pathMode */ false);
+		let externalSubject = "";
+		for (const raw of extractAbsolutePathsFromBash(cmd, input.cwd)) {
+			if (!isExternal(raw, input.cwd)) continue;
+			const ext = evaluateExternal(input, raw.replace(/\\/g, "/"));
+			const combined = strongest(v, ext);
+			if (VERDICT_RANK[combined] > VERDICT_RANK[v]) {
+				v = combined;
+				externalSubject = raw;
+			}
+		}
 		return {
 			verdict: v,
 			reason:
 				v === "allow"
 					? ""
-					: `bash command ${v === "deny" ? "denied" : "needs approval"}: ${truncate(cmd, 120)}`,
+					: externalSubject
+						? `bash command touches external ${externalSubject} (${v === "deny" ? "denied" : "needs approval"}): ${truncate(cmd, 80)}`
+						: `bash command ${v === "deny" ? "denied" : "needs approval"}: ${truncate(cmd, 120)}`,
 		};
 	}
 
@@ -168,4 +182,27 @@ export function evaluate(input: EvaluateInput): Decision {
 
 function truncate(s: string, n: number): string {
 	return s.length <= n ? s : s.slice(0, n - 1) + "…";
+}
+
+/** Heuristically pull absolute path tokens from a bash command so the
+ *  external_directory layer gets a chance to evaluate them. Catches `/abs`,
+ *  `~/path` (expanded), and quoted forms. Misses paths built via vars or
+ *  command substitution — those are the LLM's responsibility to declare. */
+function extractAbsolutePathsFromBash(cmd: string, cwd: string): string[] {
+	const out = new Set<string>();
+	const home = process.env.HOME ?? "";
+	// Match optionally-quoted tokens starting with / or ~/ — stop at whitespace,
+	// quote, or shell metachars that would never appear inside a real path.
+	const re = /(?:^|[\s=:])["']?(~?\/[^\s"'`<>|;&)\]]+)/g;
+	let m: RegExpExecArray | null;
+	// biome-ignore lint/suspicious/noAssignInExpressions: standard regex iteration pattern
+	while ((m = re.exec(cmd)) !== null) {
+		let p = m[1];
+		if (p.startsWith("~/") && home) p = home + p.slice(1);
+		// Strip trailing punctuation that's almost certainly not part of the path.
+		p = p.replace(/[.,:;]+$/, "");
+		if (p.length > 1) out.add(p);
+	}
+	void cwd; // cwd reserved for future relative-resolution; out is absolute-only
+	return [...out];
 }
