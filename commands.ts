@@ -1,4 +1,4 @@
-// /mode, /mode-set, /plan-execute, /reset slash commands.
+// /mode, /mode-set, /plan-execute, /reset, /thinking-toggle slash commands.
 
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { MODE_NAMES, type ModeName } from "./config";
@@ -8,6 +8,12 @@ import { findLatestPlan } from "./plans";
 import type { Runtime } from "./runtime";
 
 const THINKING_LEVELS = ["off", "minimal", "low", "medium", "high", "xhigh"] as const;
+const CYCLE_LEVELS = ["off", "minimal", "low", "medium", "high"] as const;
+type BinaryOnLevel = "minimal" | "low" | "medium" | "high" | "xhigh";
+
+// Module-level so /thinking-toggle and Alt+T share the same "remember last
+// non-off level" state across calls. Binary models flip between off and this.
+let lastBinaryOnLevel: BinaryOnLevel = "medium";
 
 export function registerCommands(rt: Runtime): void {
 	const { pi, state } = rt;
@@ -83,6 +89,76 @@ export function registerCommands(rt: Runtime): void {
 		description: "Toggle session bypass for permission ask prompts",
 		handler: async (args, ctx) => autoApproveHandler(rt, ctx, args),
 	});
+
+	pi.registerCommand("thinking-toggle", {
+		description: "Toggle thinking (binary for Qwen-style, cycle for others)",
+		handler: async (_args, ctx) => thinkingToggleHandler(rt, ctx),
+	});
+}
+
+/** Shared by /thinking-toggle slash and Alt+T shortcut (shortcuts.ts).
+ *  Binary models (qwen-chat-template etc.) flip between off and the last
+ *  non-off level. Leveled models cycle through supported levels. */
+export async function thinkingToggleHandler(
+	rt: Runtime,
+	ctx: ExtensionContext,
+): Promise<void> {
+	const { pi } = rt;
+	const model = ctx.model as
+		| {
+				reasoning?: boolean;
+				compat?: { thinkingFormat?: string };
+				thinkingLevelMap?: Record<string, unknown>;
+		  }
+		| undefined;
+	if (!model) {
+		ctx.ui.notify("No model selected; thinking toggle skipped.", "warning");
+		return;
+	}
+	if (!model.reasoning) {
+		ctx.ui.notify("Model does not support thinking. Toggle skipped.", "warning");
+		return;
+	}
+
+	const map = model.thinkingLevelMap ?? {};
+	const supportedAll =
+		Object.keys(map).length > 0
+			? (CYCLE_LEVELS as readonly string[]).filter((lvl) => map[lvl] !== null)
+			: ([...CYCLE_LEVELS] as string[]);
+	if (supportedAll.length === 0) {
+		ctx.ui.notify("Model has no supported thinking levels.", "warning");
+		return;
+	}
+
+	const fmt = model.compat?.thinkingFormat;
+	const isBinary = fmt && BINARY_THINKING_FORMATS.has(fmt);
+	const current = pi.getThinkingLevel();
+
+	if (isBinary) {
+		const nonOff = supportedAll.filter((l) => l !== "off");
+		if (nonOff.length === 0) {
+			ctx.ui.notify("Binary model has no 'on' level configured.", "warning");
+			return;
+		}
+		if (current === "off") {
+			const target = nonOff.includes(lastBinaryOnLevel)
+				? lastBinaryOnLevel
+				: (nonOff[0] as BinaryOnLevel);
+			pi.setThinkingLevel(target);
+		} else {
+			if (nonOff.includes(current as string)) {
+				lastBinaryOnLevel = current as BinaryOnLevel;
+			}
+			pi.setThinkingLevel("off");
+		}
+	} else {
+		const idx = supportedAll.indexOf(current as string);
+		const next = supportedAll[(idx + 1) % supportedAll.length] as BinaryOnLevel | "off";
+		pi.setThinkingLevel(next);
+	}
+
+	rt.invalidateFooter?.();
+	rt.requestRender();
 }
 
 /** Handler exported so the VS Code button can drive the same code path.
