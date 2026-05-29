@@ -25,7 +25,10 @@
     "*.ts",
     "permissions/**/*.ts",
     "docs/**/*.md",
-    "README.md"
+    "media/**",
+    "README.md",
+    "CHANGELOG.md",
+    "LICENSE"
   ],
   "pi": {
     "extensions": [

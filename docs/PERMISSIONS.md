@@ -1,133 +1,126 @@
 # Permission system
 
-권한 시스템은 LLM 이 호출하는 모든 도구 (`read`/`edit`/`write`/`bash`/...)
-를 평가해서 `allow` / `ask` / `deny` 중 하나로 판정한다. Kilo Code 의 모델
-을 Pi 의 `tool_call` 훅에 이식한 것.
+Every LLM tool call (`read` / `edit` / `write` / `bash` / …) is evaluated and assigned one of `allow` / `ask` / `deny`. Kilo Code's model, ported onto Pi's `tool_call` hook.
 
-`modes.json` 의 `activeTools` 가 **모드별로 어떤 도구가 LLM 한테 보이는지**
-를 제어한다면 (Layer 1), 권한 시스템은 **그 도구가 어떤 파일/명령을 만질
-수 있는지** 를 제어한다 (Layer 2). 두 layer 는 직교.
+While `modes.json`'s `activeTools` controls **which tools the LLM even sees** for a given mode (Layer 1), the permission system controls **what those tools may touch** (Layer 2). The two layers are orthogonal.
 
 ---
 
-## 1. 평가 계층 (낮은 → 높은 우선순위)
+## 1. Evaluation layers (lowest → highest precedence)
 
 ```
-base defaults                       ← BASE_DEFAULTS (코드)
-  └─ mode defaults                  ← MODE_DEFAULTS[currentMode] (코드)
-       └─ ~/.pi/agent/modes.json:permissions   ← global user (정규)
-       └─ (fallback) ~/.pi/agent/permissions.json  ← legacy 위치, 통합 전 설치본
-            └─ ${cwd}/.pi/permissions.json     ← project user
-                 └─ ${cwd}/.piignore           ← 무조건 deny (별도 layer)
+BASE_DEFAULTS                                              (code)
+  └─ MODE_DEFAULTS[currentMode]                            (code)
+       └─ ~/.pi/agent/modes.json:permissions               (global user — canonical)
+       └─ (fallback) ~/.pi/agent/permissions.json          (legacy standalone — pre-consolidation installs)
+            └─ ${cwd}/.pi/permissions.json                 (project user)
+                 └─ ${cwd}/.piignore                       (unconditional deny — separate layer)
 ```
 
-> 글로벌 권한은 **`modes.json` 의 `permissions` 키 안**에 들어감 (전체 모드
-> 설정과 한 파일 통합). 기존 standalone `permissions.json` 파일이 있으면
-> 그대로 fallback 으로 읽혀서 동작은 유지 — 통합하려면 그 내용을
-> `modes.json` 의 `permissions` 필드로 옮긴 후 `permissions.json` 삭제.
+> Global permissions live **inside `modes.json` under the `permissions` key** — one file holds the entire mode + permission config. If an older standalone `permissions.json` is present, it's loaded as a fallback to keep existing installs working. To consolidate, move its contents into `modes.json:permissions` and delete `permissions.json`.
 
-같은 layer 안에서는 **last-match wins** (Kilo 와 동일). 룰 객체의 키 순서대로
-훑어서 마지막에 매칭된 verdict 가 그 layer 의 결과.
+Within a single layer: **last-match wins** (Kilo semantics). Rules are walked in object-key order; the last matching verdict is the layer's verdict.
 
-여러 layer 결과는 **strongest wins**: `deny > ask > allow`. 어느 한
-layer 가 deny 하면 무조건 deny, ask 가 끼면 ask.
+Across layers: **strongest wins** — `deny > ask > allow`. Any layer's `deny` wins outright; any `ask` survives unless trumped by `deny`.
 
-`.piignore` 에 매치되면 다른 layer 평가 없이 바로 deny.
+`.piignore` matches short-circuit to `deny` regardless of other layers.
 
 ---
 
-## 2. 빌트인 디폴트
+## 2. Built-in defaults
 
-### Base (모든 모드)
+### Base (all modes)
 
 ```jsonc
 {
   "rules": {
     "read": {
-      "*": "allow",
-      "*.env":         "ask",
-      "*.env.*":       "ask",
-      "*.env.example": "allow"
+      "**": "allow",
+      "*.env":            "ask",
+      "**/*.env":         "ask",
+      "*.env.*":          "ask",
+      "**/*.env.*":       "ask",
+      "*.env.example":    "allow",
+      "**/*.env.example": "allow"
     },
-    "edit":  { "*": "allow" },
-    "write": { "*": "allow" },
+    "edit":  { "**": "allow" },
+    "write": { "**": "allow" },
     "bash":  BASH_DEFAULT    // ↓
   },
   "external_directory": {
-    "*":            "ask",
+    "**":           "ask",
     "/tmp/**":      "allow",
     "~/.pi/**":     "allow"
   }
 }
 ```
 
-### `BASH_DEFAULT` — code / debug 모드용
+> Why `**` instead of `*`: path-mode glob `*` is single-segment (`[^/]*`), so `*: ask` would silently miss any nested path like `src/.env` or `/etc/passwd`. `**` (`.*`) is recursive and matches across slashes — closing that gap.
 
-`*: ask` + 안전한 명령 30여 개만 `allow`. 즉 위에 없는 명령
-(`rm`/`sudo`/`curl|sh`/`npm install`/`git push` 등) 은 모두 ask.
+### `BASH_DEFAULT` (code / debug modes)
 
-| 카테고리 | allow 패턴 |
+`*: ask` plus an allowlist for ~30 safe commands. Anything not in the allow list (`rm`, `sudo`, `curl | sh`, `npm install`, `git push`, etc.) becomes `ask`.
+
+| Category | Allow patterns |
 |---|---|
-| 파일 보기 | `cat *` `head *` `tail *` `less *` `ls *` `tree *` `pwd *` `echo *` |
-| 검색/필터 | `grep *` `rg *` `ag *` `sort *` `uniq *` `cut *` `tr *` `jq *` `wc *` `which *` `type *` `file *` `diff *` |
-| 시스템 정보 | `du *` `df *` `date *` `uname *` `whoami *` `printenv *` `man *` |
-| 일상 mutator | `touch *` `mkdir *` `cp *` `mv *` `tsc *` `tsgo *` `tar *` `unzip *` `gzip *` `gunzip *` |
+| Inspect files | `cat *`, `head *`, `tail *`, `less *`, `ls` + `ls *`, `tree` + `tree *`, `pwd` + `pwd *`, `echo` + `echo *` |
+| Search / filter | `grep *`, `rg *`, `ag *`, `sort *`, `uniq *`, `cut *`, `tr *`, `jq *`, `wc *`, `which *`, `type *`, `file *`, `diff *` |
+| System info | `du` + `du *`, `df` + `df *`, `date` + `date *`, `uname` + `uname *`, `whoami` + `whoami *`, `printenv` + `printenv *`, `env` + `env *`, `man *` |
+| Common mutators | `touch *`, `mkdir *`, `cp *`, `mv *`, `tsc` + `tsc *`, `tsgo` + `tsgo *`, `tar *`, `unzip *`, `gzip *`, `gunzip *` |
+| Shell metacharacters | `*|*`, `*;*`, `*&&*`, `*||*`, `*$(*`, `` *`* ``, `*>*`, `*>>*`, `*<(*`, `*\n*`, `* > *`, `* >> *`, `*>|*`, `* >| *` — all `ask` (so `cat foo | rm` doesn't slip through under the `cat *` allow) |
 
-### `BASH_READ_ONLY` — plan / ask 모드용
+> Commands often used with no args (`ls`, `pwd`, `git status`, …) have *both* bare and `* `-suffixed entries because path-mode glob `*` requires a space. Without the bare entry, `ls` (no args) would fall through to `*: ask`.
 
-`*: deny` + read-only 명령만 `allow` + **shell metachar 무조건 deny**.
+### `BASH_READ_ONLY` (plan / ask modes)
 
-| 카테고리 | 룰 |
+`*: deny` + read-only commands explicit allow + **shell metacharacters hard deny**.
+
+| Category | Rule |
 |---|---|
-| 기본 | `*: deny` |
-| 위 BASH_DEFAULT 의 read-only allow 들 동일 |
-| git read-only | `git *: deny` 후 `git log/show/diff/status/blame/rev-parse/ls-files/...` 만 allow |
-| Shell metachar | `*\|*` `*;*` `*&&*` `*&*` `*$(*` `` *`* `` `*>*` `*>>*` `*<(*` 모두 deny |
-| sort -o | `sort -o *` `sort * -o *` `sort --output*` deny (파일 쓰기라서) |
+| Default | `*: deny` |
+| Same read-only allows as BASH_DEFAULT | |
+| git read-only | `git *: deny` then re-allow `git log/show/diff/status/blame/rev-parse/ls-files/...` (bare + with-args) |
+| Shell metacharacters | `*|*`, `*;*`, `*&&*`, `*&*`, `*$(*`, `` *`* ``, `*>*`, `*>>*`, `*<(*` — all `deny` |
+| `sort -o` | `sort -o *`, `sort * -o *`, `sort --output*` — `deny` (file write) |
 
-### 모드별 override
+### Per-mode overrides
 
 ```ts
-code:  {} // base 그대로
+code:  {} // base as-is
 plan:  {
   rules: {
     bash:  BASH_READ_ONLY,
-    edit:  { "*": "deny", ".pi/plans/*.md": "allow", ".pi/plans/**/*.md": "allow" },
-    write: { "*": "deny", ".pi/plans/*.md": "allow", ".pi/plans/**/*.md": "allow" }
+    edit:  { "**": "deny", ".pi/plans/*.md": "allow", ".pi/plans/**/*.md": "allow" },
+    write: { "**": "deny", ".pi/plans/*.md": "allow", ".pi/plans/**/*.md": "allow" }
   }
 }
-debug: {} // base 그대로 (디버깅에 free shell 필요)
+debug: {} // base as-is (debug needs free shell)
 ask:   {
   rules: {
     bash:  BASH_READ_ONLY,
-    edit:  { "*": "deny" },
-    write: { "*": "deny" }
+    edit:  { "**": "deny" },
+    write: { "**": "deny" }
   }
 }
 ```
 
-> 참고: `activeTools` 가 plan/ask 에서 edit/write 를 LLM 한테 노출 안 함.
-> 그래서 plan 의 `.pi/plans/*.md allow` 룰은 사용자가 activeTools 에 edit/
-> write 를 직접 추가했을 때를 위한 defense in depth.
+> Note: plan/ask `activeTools` already exclude edit/write from the LLM, so the `edit: deny` / `write: deny` rules are defense-in-depth — they catch the case where a user manually adds edit/write to those modes' `activeTools`.
 
 ---
 
-## 3. 사용자 설정 파일
+## 3. User config
 
-### 글로벌: `~/.pi/agent/modes.json` 의 `permissions` 키
+### Global: `~/.pi/agent/modes.json` under the `permissions` key
 
-권한 룰은 모드 설정과 같은 파일에 함께 있음. 첫 실행 시
-`modes.example.json` 이 자동 생성되며 거기에 `permissions` 섹션 예시
-포함. 그걸 `modes.json` 으로 복사해서 편집.
+Permission rules live in the same file as mode config. On first run, `modes.example.json` is generated with a `permissions` section as a template; copy it to `modes.json` and edit.
 
-기존 standalone `~/.pi/agent/permissions.json` 도 fallback 으로 읽힘
-(통합 전 설치본 호환). modes.json:permissions 가 있으면 그게 우선.
+A standalone `~/.pi/agent/permissions.json` is also still loaded as a fallback (for pre-consolidation installs). When both exist, `modes.json:permissions` wins.
 
-### 프로젝트: `${cwd}/.pi/permissions.json`
+### Project: `${cwd}/.pi/permissions.json`
 
-프로젝트 디렉터리에 별도로 둠. 글로벌보다 우선.
+Lives in the project directory. Overrides the global rules.
 
-### 스키마
+### Schema
 
 ```jsonc
 {
@@ -151,75 +144,75 @@ ask:   {
 
 ---
 
-## 4. Glob 문법
+## 4. Glob syntax
 
-**파일 path 용 (`read`/`edit`/`write`)**: gitignore-style
-- `*` 한 디렉터리 안의 임의 문자 (슬래시 X)
-- `**` 재귀 (슬래시 OK)
-- `?` 한 글자 (슬래시 X)
+**File path (read / edit / write)**: gitignore-style
+- `*` any chars within one path segment (no `/`)
+- `**` recursive (matches `/`)
+- `?` single char (not `/`)
 - `[abc]` character class
-- `~/` 홈 디렉터리 (`external_directory` 패턴에서)
-- 슬래시 시작 (`/etc/...`) 또는 상대경로 (`src/...`)
+- `~/` home expansion (in `external_directory` patterns)
+- Leading `/` (`/etc/...`) or relative (`src/...`)
 
-**Bash 명령 용**: shell-mode (`*` 가 슬래시 가로지름)
-- `*` 임의 문자 전부 (슬래시 포함)
-- `**` 동일
-- `"rm *"` → `rm /tmp/foo`, `rm -rf node_modules` 다 매치
+**Bash command**: shell mode (`*` crosses `/`)
+- `*` any chars (slash included)
+- `**` same
+- `"rm *"` matches both `rm /tmp/foo` and `rm -rf node_modules`
+
+For bash commands, the evaluator additionally extracts absolute-path tokens (`/abs`, `~/path`) and runs them through `external_directory` rules — so `bash "cat /etc/passwd"` is caught by `external_directory: {"**": "ask"}` even though no bash pattern mentions `/etc`.
 
 ---
 
 ## 5. `.piignore` (gitignore-style)
 
-워크스페이스 루트의 `.piignore` 파일에 패턴 적으면 그 파일은 **모든 도구에서
-접근 차단** (deny). 권한 layer 룰보다 우선.
+A `.piignore` at the workspace root denies any file matching the patterns for **every tool**. Trumps the regular permission layers.
 
 ```
-# 코멘트
+# comment
 secrets/
 *.key
 *.pem
 *.db
 *.sqlite
 
-# 부정 (allowlist override)
+# negation (allowlist override)
 !secrets/public.json
 ```
 
-- 디렉터리 패턴 (trailing `/`) 은 그 디렉터리 자체 + 내부 파일 다 매치
-- `.gitignore` 와 별개 (서로 영향 X)
-- 글로벌 ignore 없음 — 글로벌은 `~/.pi/agent/permissions.json` 의 deny 룰
-  로 처리
+- Directory patterns (trailing `/`) match the directory and everything inside.
+- Independent from `.gitignore`.
+- No global `.piignore` — use the `deny` rules in `modes.json:permissions` for global blocks.
+
+> Absolute paths outside the workspace are skipped (no `.piignore` could meaningfully apply). Use `external_directory: { "/path/**": "deny" }` for those.
 
 ---
 
-## 6. Auto-approve (세션 토글)
+## 6. Auto-approve (session toggle)
 
-`ask` 가 떠도 자동 통과시키는 binary 토글. 세션 한정 — `session_start`
-마다 자동 OFF.
+Binary toggle that auto-passes any `ask` verdict. Session-scoped — resets to OFF on every `session_start`.
 
-**조작 방법**:
-- **CLI**: `/auto-approve` (토글) / `/auto-approve on` / `/auto-approve off`
-- **VS Code**: 채팅 푸터의 "🔒 Auto" 버튼 (켜지면 🔓 + 주황색)
+**How to toggle**:
+- **CLI slash**: `/auto-approve` (toggle) / `/auto-approve on` / `/auto-approve off`
+- **TUI shortcut**: `Ctrl+Shift+A`
+- **VS Code**: footer "🔒 Auto" button (turns 🔓 + orange when on). The keyboard combo doesn't work in the webview (VS Code intercepts it) — use the button.
 
-**의도적으로 영구화 없음** — 영구 ON 은 권한 시스템의 의의가 사라짐.
-영구 룰이 필요하면 `~/.pi/agent/permissions.json` 에서 `"ask"` 를
-`"allow"` 로 바꾸면 됨.
+**Never persisted by design** — keeping it permanently ON would defeat the permission system. For permanent rule changes, edit `modes.json:permissions` directly (flip `"ask"` to `"allow"`).
 
-응답 도중 토글해도 즉시 적용 (다음 `tool_call` 부터). 슬래시 명령은
-Pi 의 `agent-session.js:689` 에 따라 스트리밍 중에도 queue 없이 즉시
-실행. 단 이미 떠 있는 confirm 다이얼로그는 사용자가 직접 처리해야 함.
+Toggling mid-turn takes effect immediately (next `tool_call`). Slash commands aren't queued during a streaming response (Pi's `agent-session.js:689`). Dialogs already on screen still need to be answered manually — auto-dismissing them would be more confusing than helpful.
 
 ---
 
-## 7. 자주 쓰는 예시
+## 7. Common recipes
 
-### 시크릿 / 키 보호
+### Protect secrets / keys
 ```jsonc
 {
   "rules": {
     "read": {
       "*.key": "deny",
+      "**/*.key": "deny",
       "*.pem": "deny",
+      "**/*.pem": "deny",
       "id_rsa*": "deny",
       "*.sqlite": "ask"
     }
@@ -227,7 +220,7 @@ Pi 의 `agent-session.js:689` 에 따라 스트리밍 중에도 queue 없이 즉
 }
 ```
 
-### 회사 시스템 디렉터리 차단
+### Block system directories
 ```jsonc
 {
   "external_directory": {
@@ -239,7 +232,7 @@ Pi 의 `agent-session.js:689` 에 따라 스트리밍 중에도 queue 없이 즉
 }
 ```
 
-### 특정 프로젝트만 외부 접근 허용
+### Allow a specific external dir in one project
 ```jsonc
 // ${cwd}/.pi/permissions.json
 {
@@ -249,7 +242,7 @@ Pi 의 `agent-session.js:689` 에 따라 스트리밍 중에도 queue 없이 즉
 }
 ```
 
-### 위험 bash 명령 ask 강제
+### Force-ask risky bash commands
 ```jsonc
 {
   "rules": {
@@ -266,7 +259,7 @@ Pi 의 `agent-session.js:689` 에 따라 스트리밍 중에도 queue 없이 즉
 }
 ```
 
-### debug 모드만 테스트 명령 자동 허용
+### Auto-allow test commands in debug mode only
 ```jsonc
 {
   "modes": {
@@ -283,13 +276,13 @@ Pi 의 `agent-session.js:689` 에 따라 스트리밍 중에도 queue 없이 즉
 }
 ```
 
-### 모노레포의 일부 디렉터리만 edit 허용
+### Edit only one directory in a monorepo
 ```jsonc
 // ${cwd}/.pi/permissions.json
 {
   "rules": {
     "edit": {
-      "*": "deny",
+      "**": "deny",
       "packages/my-pkg/**": "allow",
       "packages/my-pkg/dist/**": "deny"
     }
@@ -299,67 +292,57 @@ Pi 의 `agent-session.js:689` 에 따라 스트리밍 중에도 queue 없이 즉
 
 ---
 
-## 8. 도구별 path 추출 규칙
+## 8. Per-tool path extraction
 
-권한 평가 시 어떤 path 가 룰에 매칭되는지:
+What gets matched against the rules per tool:
 
-| 도구 | path 출처 | 룰 키 |
+| Tool | Path source | Rule key |
 |---|---|---|
 | `read` | `input.path` | `read` |
 | `edit` | `input.path` | `edit` |
 | `write` | `input.path` | `write` |
-| `multi_edit` | `input.path` + 각 `edits[].path` (전부 평가, 하나라도 deny 면 deny) | `edit` |
-| `grep` | `input.path` (검색 root) | `read` |
+| `multi_edit` | `input.path` + each `edits[].path` (all evaluated — any deny blocks) | `edit` |
+| `grep` | `input.path` (search root) | `read` |
 | `find` | `input.path` | `read` |
 | `ls` | `input.path` | `read` |
-| `bash` | path 없음, `input.command` 매칭 | `bash` |
+| `bash` | none for the rule itself; `input.command` for the bash ruleset + extracted absolute paths fed to `external_directory` | `bash` (+ `external_directory`) |
 
 ---
 
-## 9. 외부 디렉터리 평가
+## 9. External-directory evaluation
 
-워크스페이스 (`cwd`) 밖의 절대경로는 `external_directory` 룰과 일반
-도구 룰을 둘 다 평가하고 **strongest** 적용. 즉 `external_directory:
-"*": "ask"` 면 워크스페이스 밖 모든 read/edit/write 가 한 번 더 ask.
+Absolute paths outside the workspace `cwd` run through both the regular tool rules and the `external_directory` rules — strongest wins. So `external_directory: { "**": "ask" }` puts a confirm on every read/edit/write outside `cwd`.
 
-자동 화이트리스트:
-- `/tmp/**` — Pi 가 임시 작업 자주 함
-- `~/.pi/**` — Pi 자체 디렉터리
+Auto-allowlisted:
+- `/tmp/**` — Pi uses tmp a lot
+- `~/.pi/**` — Pi's own home
 
 ---
 
-## 10. 헤드리스 환경
+## 10. Headless environments
 
-`!ctx.hasUI` (CI / 백그라운드 RPC) 에서 `ask` 가 나오면 **자동 deny**.
-무한 대기 방지. 메시지: `"... (headless session — cannot prompt;
-configure permissions.json to allow)"`.
+When `!ctx.hasUI` (CI / background RPC), an `ask` verdict becomes an **automatic deny** so the run doesn't hang waiting for input that will never come. Error message: `"... (headless session — cannot prompt; configure permissions.json to allow)"`.
 
-CI 에서 자동화 돌리려면 해당 룰을 `"allow"` 로 미리 박아두거나, 그
-세션에서만 `/auto-approve on` 보내야 함.
+For CI automation, either bake the rule as `"allow"` ahead of time, or send `/auto-approve on` once at session start.
 
 ---
 
-## 11. 트러블슈팅
+## 11. Troubleshooting
 
-### 룰을 추가했는데 적용 안 됨
-1. JSON 문법 에러 — `~/.pi/agent/permissions.json` 파싱 실패 시 `[modes:permissions] failed to parse ...` 메시지가 stderr 에 뜸
-2. Pi 가 reload 안 됨 — `/reload-runtime` 슬래시 (CLI) 또는 VS Code 의
-   설정 패널 저장 (자동 reloadAll 트리거)
-3. 마지막 매칭 룰을 봤는지 확인 — last-match-wins 라 catchall 을 위로,
-   구체적인 룰을 아래로 두면 의도와 반대
+### A new rule doesn't take effect
+1. JSON parse error — failures surface as `[modes:permissions] failed to parse <path>: ...` on stderr.
+2. Pi hasn't reloaded — send `/reload-runtime` (CLI) or save anything in the VS Code settings panel (triggers `reloadAll` automatically).
+3. Confirm the last matching rule is what you think — with last-match-wins, put catch-alls high and specific rules low; the reverse is the trap.
 
-### Bash 룰이 매칭 안 됨
-- 슬래시 포함 명령은 path-mode glob 으로는 매칭 안 됨. evaluator 가
-  bash 평가 시 shell-mode (`*` 가 슬래시 가로지름) 로 자동 전환.
-- `"rm *"` 는 `rm /tmp/foo` 매치됨. 안 매치되면 룰 키 오타 가능성.
+### Bash rule doesn't match
+- Slash-containing commands aren't matched by path-mode glob. The evaluator auto-switches to shell mode for bash, so `*` crosses `/`.
+- `"rm *"` matches `rm /tmp/foo`. If it doesn't match, suspect a typo in the rule key.
 
-### Plan 모드에서 정상적인 명령이 deny
-- `BASH_READ_ONLY` 는 shell metachar 가 들어가면 무조건 deny. `cat
-  file | grep foo` 같은 거 막힘.
-- 의도된 동작 (escape hatch 차단). 정말 필요하면 `code` 모드로 전환
-  하거나 `${cwd}/.pi/permissions.json` 에 mode override 로 풀기.
+### Plan mode denies a routine command
+- `BASH_READ_ONLY` denies anything containing shell metacharacters — `cat file | grep foo` won't run.
+- Intentional (it's the escape-hatch guard). If you really need it, switch to `code` or relax via `${cwd}/.pi/permissions.json` mode override.
 
-### `.piignore` 가 무시되는 듯
-- 워크스페이스 루트에만 둠 (서브디렉터리 미지원, 현재 버전).
-- 패턴 끝의 `/` 는 디렉터리만 매치. 파일도 매치하고 싶으면 trailing
-  `/` 빼기.
+### `.piignore` seems ignored
+- Only the workspace-root `.piignore` is loaded (sub-directory `.piignore` files aren't read in the current version).
+- Trailing `/` matches directories only. Drop the `/` if you want files matched too.
+- Absolute paths outside `cwd` are skipped — use `external_directory` rules for those.

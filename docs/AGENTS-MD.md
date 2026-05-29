@@ -1,29 +1,25 @@
 # AGENTS.md
 
-[`AGENTS.md`](https://agents.md/) 는 OpenCode / Kilo Code 등이 채택한
-오픈 포맷 — "agent 를 위한 README". 빌드/테스트/컨벤션 등 LLM 이 알아야
-할 프로젝트 컨텍스트를 마크다운 1장에 적어두면 도구가 자동으로 system
-prompt 에 넣어줌.
+[`AGENTS.md`](https://agents.md/) is an open format adopted by OpenCode, Kilo Code, and others — a "README for the agent". One markdown file that captures build/test commands, conventions, gotchas — the project context an LLM should know — and the tool injects it into the system prompt automatically.
 
-이 확장도 같은 메커니즘을 구현. opt-in 아니라 **자동 발견 + 자동 주입**.
+This extension implements the same mechanism. **Not opt-in — auto-discovered and auto-injected.**
 
 ---
 
-## 1. 파일 위치
+## 1. File locations
 
-| 위치 | 용도 | 우선순위 |
+| Location | Purpose | Precedence |
 |---|---|---|
-| `${cwd}/AGENTS.md` | 프로젝트별 | 높음 (글로벌 override) |
-| `~/.pi/agent/AGENTS.md` | 글로벌 (모든 프로젝트 공통) | 낮음 |
+| `${cwd}/AGENTS.md` | Per-project | High (overrides global) |
+| `~/.pi/agent/AGENTS.md` | Global (shared across projects) | Low |
 
-둘 다 있으면 system prompt 끝에 글로벌 먼저, 프로젝트 나중. LLM 이 후반
-지침을 더 잘 따르므로 자연스럽게 project override 효과.
+When both exist, the system prompt is `... + global + project`. LLMs weight later instructions more heavily, so listing project last gives natural override semantics.
 
 ---
 
-## 2. 작동 방식
+## 2. How it works
 
-매 `before_agent_start` 훅 (= user prompt 1개 cycle 시작) 마다:
+On every `before_agent_start` hook (= one user prompt cycle start):
 
 ```ts
 sections = [event.systemPrompt];
@@ -33,15 +29,15 @@ if (agents.project) sections.push(`## Project AGENTS.md (${agents.projectPath})\
 return { systemPrompt: sections.join("\n\n") };
 ```
 
-- 매 cycle 디스크에서 다시 읽음 (작은 파일이고 캐시 잘 받음)
-- 파일 편집이 다음 user prompt 부터 즉시 반영 — reload 불필요
-- LLM 한테는 system prompt 의 일부로 보임 (별도 메시지 아님)
+- Re-read from disk every cycle (small files, fs cache makes it cheap).
+- Edits take effect on the next user prompt — no reload required.
+- Reaches the LLM as part of the system prompt (not a separate message).
 
 ---
 
-## 3. 권장 내용
+## 3. Recommended contents
 
-### 예시: `${cwd}/AGENTS.md`
+### Example: `${cwd}/AGENTS.md`
 
 ```markdown
 # Project context for AI coding agents
@@ -64,12 +60,12 @@ return { systemPrompt: sections.join("\n\n") };
 - Public API changes need a changeset (`npx changeset`)
 
 ## Gotchas
-- Don't `npm install` — uses `pnpm`. Run `pnpm i` instead.
+- Don't `npm install` — this repo uses `pnpm`. Run `pnpm i` instead.
 - `prisma generate` after every schema change
 - E2E tests need `docker-compose up -d` first
 ```
 
-### 예시: `~/.pi/agent/AGENTS.md`
+### Example: `~/.pi/agent/AGENTS.md`
 
 ```markdown
 # Personal preferences (all projects)
@@ -78,34 +74,29 @@ return { systemPrompt: sections.join("\n\n") };
 - Prefer existing utilities over adding new dependencies.
 - Avoid `any` in TypeScript — use `unknown` if the type is truly opaque.
 - Keep PRs small (< 300 lines diff).
-- Commit messages: imperative mood, first letter lowercase, no period.
+- Commit messages: imperative mood, lowercase first letter, no trailing period.
 ```
 
 ---
 
-## 4. 다른 도구와의 호환
+## 4. Compatibility with other tools
 
-| 도구 | AGENTS.md 인식 |
+| Tool | AGENTS.md recognized |
 |---|---|
-| OpenCode | ✓ (CLAUDE.md 와 둘 다 있으면 AGENTS.md 우선) |
-| Kilo Code | ✓ (대문자 파일명 필수) |
-| Cursor | 지원 시작됨 |
-| Claude Code (Anthropic CLI) | `CLAUDE.md` 별도 — AGENTS.md 자동 인식 X |
-| Pi 본체 (our extension 없이) | 인식 X |
-| **이 확장 (hmm-code)** | ✓ — opencode/kilo 와 동일 우선순위 |
+| OpenCode | ✓ (AGENTS.md wins over CLAUDE.md when both exist) |
+| Kilo Code | ✓ (filename must be uppercase) |
+| Cursor | Recently added |
+| Claude Code (Anthropic CLI) | Uses `CLAUDE.md` instead — does not auto-pick up AGENTS.md |
+| Pi core (without this extension) | Not recognized |
+| **This extension (hmm-code)** | ✓ — same precedence as opencode / kilo |
 
 ---
 
-## 5. 안 하는 것
+## 5. What we don't do
 
-- **모노레포 nested AGENTS.md (서브디렉터리 lazy 로딩)** — Kilo Code 는
-  Read 도구가 서브디렉터리 파일을 접근할 때 그 디렉터리의 AGENTS.md 도
-  lazy 주입. 우리는 미지원. 필요하면 추후 추가.
-- **CLAUDE.md fallback** — Kilo/OpenCode 처럼 둘 다 인식하는 모드 없음.
-  사용자가 AGENTS.md 만 쓰는 게 자연스러움.
-- **AGENTS.md write-protection** — Kilo 는 LLM 이 AGENTS.md 를 함부로
-  수정 못 하게 막음. 우리는 권한 시스템 (permissions.json 의 edit deny
-  룰) 에 사용자가 직접 추가하면 됨:
+- **Nested AGENTS.md in monorepos** — Kilo's `Read` tool lazy-injects the directory's `AGENTS.md` when a subdirectory file is accessed. We don't do that. Add later if needed.
+- **CLAUDE.md fallback** — no dual-recognition like Kilo / OpenCode. Just use AGENTS.md.
+- **AGENTS.md write protection** — Kilo prevents the LLM from editing AGENTS.md. We don't enforce that; add it to your permission rules if you want it:
   ```jsonc
   {
     "rules": {
@@ -117,16 +108,12 @@ return { systemPrompt: sections.join("\n\n") };
 
 ---
 
-## 6. 보안 고려
+## 6. Security considerations
 
-`AGENTS.md` 도 system prompt 의 일부 — 그 안에 적힌 지시문은 LLM 이
-거의 신뢰해서 따름. 따라서:
+`AGENTS.md` is part of the system prompt — instructions inside it are followed essentially as trusted. So:
 
-- 신뢰할 수 없는 프로젝트의 `AGENTS.md` 는 잠재적 prompt injection 매개체
-- 모르는 repo clone 후 첫 실행 전에 한 번 훑어보는 게 안전
-- 만약 항상 자동 주입을 원하지 않는다면 코드 수정으로 끄는 방법:
-  [`hooks.ts`](hooks.ts) 의 `before_agent_start` 안의 `readAgentsMd`
-  호출 조건을 바꾸기
+- A `AGENTS.md` from an untrusted project is a potential prompt-injection vector.
+- Skim AGENTS.md before the first run on a cloned-from-strangers repo.
+- To disable auto-injection entirely, comment out the `readAgentsMd` call inside [`hooks.ts`](../hooks.ts) `before_agent_start`.
 
-이 확장은 의도적으로 opt-out 메커니즘을 제공하지 않음 — 일관된 동작이
-중요하다는 판단. 대신 위 코드 한 줄만 주석 처리하면 끄기 가능.
+This extension intentionally has no opt-out toggle — consistent behavior was prioritized over flexibility. The one-line code-edit escape hatch is sufficient for the rare case.

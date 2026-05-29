@@ -1,0 +1,17 @@
+<!-- Full-color "Hmm" logo used in the empty-state and tab icon.
+     LED look: 3 stacked outlines + filled core, all in green. -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 140 64">
+	<defs>
+		<style>
+			.hmm { font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace; font-weight: 900; }
+		</style>
+	</defs>
+	<g>
+		<text x="74" y="52" text-anchor="middle" font-size="56" class="hmm"
+			fill="none" stroke="#1a4d1a" stroke-width="1.4">Hmm</text>
+		<text x="71" y="49" text-anchor="middle" font-size="56" class="hmm"
+			fill="none" stroke="#2d7a2d" stroke-width="1.4">Hmm</text>
+		<text x="68" y="46" text-anchor="middle" font-size="56" class="hmm"
+			fill="#5fff5f" stroke="#3a9c3a" stroke-width="1">Hmm</text>
+	</g>
+</svg>

@@ -1,0 +1,11 @@
+<!-- Activity bar / editor title icon. VS Code's editor/title menu forces
+     monochrome rendering with currentColor (custom fill colors get stripped),
+     so we use currentColor + thick strokes so the H reads at 16×16 against
+     the title bar's foreground color in any theme. -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16">
+	<g fill="currentColor">
+		<rect x="2.5" y="2" width="3" height="12" rx="0.4"/>
+		<rect x="10.5" y="2" width="3" height="12" rx="0.4"/>
+		<rect x="2.5" y="6.6" width="11" height="2.8" rx="0.3"/>
+	</g>
+</svg>
