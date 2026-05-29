@@ -7,14 +7,17 @@ This extension is **not** published to npm directly; it ships bundled inside the
 
 ## [Unreleased]
 
+### Added
+- `modes.json:autoCompactThreshold` — overrides the built-in `AUTO_COMPACT_THRESHOLD` for context auto-summarization. Clamped to `[40, 95]` on load; editable from the VS Code settings panel.
+- `LICENSE` (MIT).
+- `CHANGELOG.md`.
+
 ### Changed
+- `ask_user` multi-select dialog strings are now English (`(multi-select)`, `Done`, `Selected:`). The `(multi-select)` title prefix is the contract the VS Code webview detects.
+- Trimmed non-structural blank lines in `DEFAULT_MODES` system-prompt addenda (kept section separators; prompt text unchanged).
 - Translated README, WORKFLOW.md, PERMISSIONS.md, AGENTS-MD.md, ANALYSIS.md to English. Updated stale references (auto-injection mechanism, finalize_plan schema, Ctrl+Shift+A keybinding, /thinking-toggle slash command).
 - `STATUS_KEYS.AUTO_APPROVE` constant introduced; raw `"auto-approve"` strings replaced.
 - Internal cleanup — removed dead exports, deduped `ansi24`, removed `writePermissionsExampleIfMissing` no-op shim, demoted internal-only exports to module-local.
-
-### Added
-- `LICENSE` (MIT).
-- `CHANGELOG.md`.
 
 ## [0.1.0] — 2026-05-29
 
