@@ -166,7 +166,14 @@ async function runTitleGen(args: TitleGenArgs): Promise<void> {
 	if (!title) return;
 
 	const setFn = (pi as any).setSessionName ?? ctx.setSessionName;
-	if (typeof setFn === "function") setFn(title);
+	if (typeof setFn !== "function") return;
+	try {
+		setFn(title);
+	} catch {
+		// Pi can throw "ctx is stale" if the session ended before our async
+		// LLM call resolved (most common in --print mode). Background job —
+		// failing to name the session is recoverable; silently drop.
+	}
 }
 
 function extractText(content: any): string {
