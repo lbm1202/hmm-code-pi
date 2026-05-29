@@ -13,7 +13,7 @@ export interface ModelRef {
 	id: string;
 }
 
-export type ThinkingLevel = "off" | "minimal" | "low" | "medium" | "high" | "xhigh";
+type ThinkingLevel = "off" | "minimal" | "low" | "medium" | "high" | "xhigh";
 
 export interface ModeConfig {
 	model?: ModelRef | "none" | null;

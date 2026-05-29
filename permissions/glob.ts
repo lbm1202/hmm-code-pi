@@ -18,7 +18,7 @@ import { homedir } from "node:os";
 const HOME = homedir().replace(/\\/g, "/");
 
 /** Expand `~/` at the start of a path. Idempotent for non-home patterns. */
-export function expandHome(p: string): string {
+function expandHome(p: string): string {
 	if (p === "~") return HOME;
 	if (p.startsWith("~/")) return HOME + p.slice(1);
 	return p;
@@ -97,12 +97,6 @@ export function matches(pattern: string, subject: string): boolean {
 	return regexFor(pattern, true).test(s);
 }
 
-/** Test whether `subject` matches `pattern` as a shell command. `*` matches
- *  anything including `/` — `"rm *"` correctly catches `"rm /tmp/foo"`. */
-export function matchesShell(pattern: string, subject: string): boolean {
-	return regexFor(pattern, false).test(subject);
-}
-
 /** Find the LAST matching rule in `rules` for `subject` as a file path.
  *  Last-match wins (Kilo semantics). */
 export function lastMatch<T>(
@@ -115,6 +109,10 @@ export function lastMatch<T>(
 		if (matches(pattern, subject)) hit = { pattern, value };
 	}
 	return hit;
+}
+
+function matchesShell(pattern: string, subject: string): boolean {
+	return regexFor(pattern, false).test(subject);
 }
 
 /** Same as `lastMatch` but uses shell-command matching semantics. */

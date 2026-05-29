@@ -10,7 +10,7 @@ export function ansi24(text: string, [r, g, b]: [number, number, number]): strin
 }
 
 /** ANSI faint/dim attribute — renders as muted default foreground (gray-ish). */
-export function dimText(text: string): string {
+function dimText(text: string): string {
 	return `\x1b[2m${text}\x1b[0m`;
 }
 
@@ -52,7 +52,7 @@ const GLYPHS: Record<string, string[]> = {
 	" ": ["  ", "  ", "  "],
 };
 
-export function renderBigText(text: string): string[] {
+function renderBigText(text: string): string[] {
 	const rows: string[] = Array(GLYPH_HEIGHT).fill("");
 	for (let i = 0; i < text.length; i++) {
 		const ch = text[i] as string;

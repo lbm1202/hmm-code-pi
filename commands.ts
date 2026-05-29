@@ -2,7 +2,7 @@
 
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { MODE_NAMES, type ModeName } from "./config";
-import { BINARY_THINKING_FORMATS } from "./constants";
+import { BINARY_THINKING_FORMATS, STATUS_KEYS } from "./constants";
 import { updateModeConfigField } from "./config-io";
 import { findLatestPlan } from "./plans";
 import type { Runtime } from "./runtime";
@@ -183,7 +183,7 @@ export async function autoApproveHandler(
 				: !state.autoApprove;
 	state.autoApprove = next;
 	try {
-		ctx.ui.setStatus("auto-approve", next ? "on" : "off");
+		ctx.ui.setStatus(STATUS_KEYS.AUTO_APPROVE, next ? "on" : "off");
 	} catch {
 		/* setStatus may not exist on every UI surface */
 	}

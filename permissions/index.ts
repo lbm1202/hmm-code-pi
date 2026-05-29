@@ -14,11 +14,7 @@ import type { Runtime } from "../runtime";
 import { BASE_DEFAULTS, MODE_DEFAULTS } from "./defaults";
 import { evaluate } from "./evaluator";
 import { extractPaths } from "./extract-paths";
-import {
-	loadGlobalPermissions,
-	loadProjectPermissions,
-	writePermissionsExampleIfMissing,
-} from "./loader";
+import { loadGlobalPermissions, loadProjectPermissions } from "./loader";
 import { loadIgnore } from "./piignore";
 import type { Permissions } from "./types";
 
@@ -40,7 +36,6 @@ function toIgnoreSubject(p: string, cwd: string): string | undefined {
 
 export function registerPermissions(rt: Runtime): void {
 	const { pi, state } = rt;
-	writePermissionsExampleIfMissing();
 
 	pi.on("tool_call" as any, async (event: any, ctx: any) => {
 		const toolName = String(event?.toolName ?? "");

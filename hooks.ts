@@ -78,7 +78,7 @@ export function registerHooks(rt: Runtime): void {
 		// long after the user forgot they enabled it.
 		state.autoApprove = false;
 		try {
-			ctx.ui.setStatus("auto-approve", "off");
+			ctx.ui.setStatus(STATUS_KEYS.AUTO_APPROVE, "off");
 		} catch {
 			/* setStatus may not exist on every UI surface */
 		}

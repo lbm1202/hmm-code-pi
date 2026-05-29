@@ -2,7 +2,8 @@
 // Centralizing here lets the VS Code extension's RPC bridge stay in lock-step
 // (see VS Code ext ANALYSIS §6 — setStatus keys are part of the public contract).
 
-/** ctx.ui.setStatus keys emitted by this extension. */
+/** ctx.ui.setStatus keys emitted by this extension. The VS Code companion
+ *  (hmm-code-vscode) mirrors this set in webview/protocol.ts — keep in sync. */
 export const STATUS_KEYS = {
 	MODE: "mode",
 	MODEL: "model",
@@ -11,6 +12,7 @@ export const STATUS_KEYS = {
 	CONTEXT: "context",
 	PLAN_HANDOFF: "plan-handoff",
 	TODOS: "todos",
+	AUTO_APPROVE: "auto-approve",
 } as const;
 
 /** Auto-compact triggers at this context-usage percent. Pi's built-in

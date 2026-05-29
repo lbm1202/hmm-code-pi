@@ -62,9 +62,3 @@ export function loadProjectPermissions(cwd: string | undefined): Permissions | u
 	return readJsonCached(join(cwd, ".pi", "permissions.json"));
 }
 
-/** Example template is no longer generated as a separate file — modes.json
- *  itself documents the schema. Kept as a no-op for backward compat with
- *  the registerPermissions wire-up. */
-export function writePermissionsExampleIfMissing(): void {
-	/* intentionally empty */
-}

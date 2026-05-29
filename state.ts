@@ -1,6 +1,7 @@
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { MODE_NAMES, type ModeConfig, type ModeName, type ModesFile } from "./config";
 import { STATUS_KEYS } from "./constants";
+import { ansi24 } from "./ui";
 
 const PROTECTED_FROM_NON_CODE: ReadonlySet<string> = new Set(["edit", "write"]);
 const ALWAYS_INJECTED: readonly string[] = ["ask_user", "request_mode_switch"];
@@ -11,15 +12,10 @@ const MODE_COLORS: Record<ModeName, [number, number, number]> = {
 	debug: [180, 120, 220], // purple
 	ask: [255, 165, 80], // orange
 };
-const ANSI_RESET = "\x1b[0m";
 // max name length + 1 → 2 of 4 names get perfect centering (code/plan with len 4),
 // ask/debug end up 1 cell off. Pure-center for all 4 isn't possible with monospace
 // when name lengths have mixed parity.
 const MODE_FIELD_WIDTH = Math.max(...MODE_NAMES.map((n) => n.length)) + 1;
-
-function ansi24(text: string, [r, g, b]: [number, number, number]): string {
-	return `\x1b[38;2;${r};${g};${b}m${text}${ANSI_RESET}`;
-}
 
 function centerText(text: string, width: number): string {
 	const diff = Math.max(0, width - text.length);

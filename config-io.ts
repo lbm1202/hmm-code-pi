@@ -11,7 +11,7 @@ import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import { MODE_NAMES, MODES_CONFIG_PATH, type ModeName } from "./config";
 
-export const EXAMPLE_CONFIG = `{
+const EXAMPLE_CONFIG = `{
   "defaultMode": "code",
   "modelAliases": {
     "openai-codex/gpt-5.5": "GPT 5.5",
