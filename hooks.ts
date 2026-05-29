@@ -8,7 +8,7 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 import { loadModes, MODE_NAMES, type ModeName } from "./config";
 import { writeExampleConfigIfMissing, ensureKeybindingsOverride, ensureQuietStartup } from "./config-io";
-import { AUTO_COMPACT_THRESHOLD, STATUS_KEYS } from "./constants";
+import { STATUS_KEYS } from "./constants";
 import { abbreviateCwd, ansi24, buildBannerLines, fmtTokens } from "./ui";
 import { modeColor } from "./state";
 import type { Runtime } from "./runtime";
@@ -342,10 +342,11 @@ function setupRuntimeHooks(rt: Runtime): void {
 			}
 		}
 		if (state.compactInFlight) return;
-		if (typeof pct !== "number" || pct < AUTO_COMPACT_THRESHOLD) return;
+		const threshold = state.autoCompactThreshold;
+		if (typeof pct !== "number" || pct < threshold) return;
 		armCompact();
 		ctx2.ui.notify(
-			`Auto-compacting at ${pct.toFixed(1)}% (threshold ${AUTO_COMPACT_THRESHOLD}%)…`,
+			`Auto-compacting at ${pct.toFixed(1)}% (threshold ${threshold}%)…`,
 			"info",
 		);
 		try {

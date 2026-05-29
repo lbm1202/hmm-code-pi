@@ -46,6 +46,10 @@ export interface ModesFile {
 	 *  unknown to the loader (just passthrough) so the permissions module
 	 *  owns its own type. */
 	permissions?: Record<string, unknown>;
+	/** Context-usage percent at which auto-compact triggers. Overrides the
+	 *  built-in AUTO_COMPACT_THRESHOLD when present. Editable from the VS Code
+	 *  settings panel. Clamped to a sane range on load. */
+	autoCompactThreshold?: number;
 }
 
 export const DEFAULT_MODES: Record<ModeName, ModeConfig> = {
@@ -80,15 +84,12 @@ export const DEFAULT_MODES: Record<ModeName, ModeConfig> = {
 		activeTools: ["read", "edit", "write", "bash", "grep", "find", "ls"],
 		systemPromptAddendum: [
 			"You are in CODE mode. Implement directly — edit/write/bash are all available.",
-			"",
 			"Do not over-design or expand scope. If a plan exists in the conversation, treat it as authoritative; if the plan has a real gap, call request_mode_switch(\"plan\", reason, summary) instead of papering over it.",
-			"",
 			"Use ask_user only for genuine implementation forks with 2-4 concrete options. Most implementation decisions don't need user input — just make the reasonable call.",
 			"",
 			"# Task Management",
 			"",
 			"Use the todo_write tool VERY frequently to plan and track tasks throughout the conversation. This is essential for keeping work organized and ensuring nothing is missed. If you do not use this tool when planning, you may forget to do important tasks — and that is unacceptable.",
-			"",
 			"- If you were handed a plan (first user message references a plan file, or a plan was just finalized), your FIRST action MUST be: read the plan file, then call todo_write with one item per plan step.",
 			"- For ANY task with 3+ distinct steps, or when the user gives a numbered/comma-separated list, start by calling todo_write.",
 			"- Mark a task in_progress BEFORE starting it; mark completed IMMEDIATELY after finishing it (including any verification: build/test pass, file actually written). NEVER batch completions. NEVER mark complete based on intent.",
@@ -105,13 +106,9 @@ export const DEFAULT_MODES: Record<ModeName, ModeConfig> = {
 		activeTools: ["read", "bash", "grep", "find", "ls"],
 		systemPromptAddendum: [
 			"You are in DEBUG mode. Form hypotheses, reproduce, inspect logs and state. You cannot edit files.",
-			"",
 			"Bash is for diagnostic commands: running the program, reading logs, querying state, running tests (pytest/jest/etc). Test artifacts / coverage / logs are fine — ephemeral by-products.",
-			"",
 			"You may NOT modify, create, or delete any SOURCE file or tracked project file by any means. This covers obvious mutators (`>`, `>>`, `tee`, `sed -i`, `rm/mv/cp/touch/chmod` on tracked files, `git commit|push|reset|restore|stash|rebase|apply`, `npm/pip install`) AND interpreter bypasses where bash wraps a runtime that internally writes (`python -c`, `python3 - <<PY`, `node -e`, `ruby -e`, `perl -e`, one-off `python script.py` if it edits sources). Scratch scripts go under /tmp, never in the project tree.",
-			"",
 			"Use ask_user when there are 2-4 concrete investigation branches and you genuinely need direction.",
-			"",
 			"Only call request_mode_switch(\"plan\", reason, summary) when (a) the user explicitly asks for a plan/fix, or (b) diagnosis is naturally complete and a code change is the obvious next step. Never mid-investigation.",
 		].join("\n"),
 	},
@@ -145,6 +142,13 @@ export function loadModes(_cwd: string): ModesFile {
 		if (userCfg) merged[name] = { ...DEFAULT_MODES[name], ...userCfg };
 	}
 	const defaultMode = raw.defaultMode && MODE_NAMES.includes(raw.defaultMode) ? raw.defaultMode : "code";
+	// Auto-compact threshold: accept a finite number, clamp to [40, 95] so a
+	// stray value can't make compaction run every turn or never run. Out of
+	// range / non-numeric → omit so the built-in default applies.
+	let autoCompactThreshold: number | undefined;
+	if (typeof raw.autoCompactThreshold === "number" && Number.isFinite(raw.autoCompactThreshold)) {
+		autoCompactThreshold = Math.min(95, Math.max(40, Math.round(raw.autoCompactThreshold)));
+	}
 	return {
 		defaultMode,
 		modes: merged,
@@ -152,5 +156,6 @@ export function loadModes(_cwd: string): ModesFile {
 		autoTitle: raw.autoTitle,
 		modelAllowlist: raw.modelAllowlist ?? {},
 		permissions: raw.permissions,
+		autoCompactThreshold,
 	};
 }

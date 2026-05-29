@@ -1,6 +1,6 @@
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { MODE_NAMES, type ModeConfig, type ModeName, type ModesFile } from "./config";
-import { STATUS_KEYS } from "./constants";
+import { AUTO_COMPACT_THRESHOLD, STATUS_KEYS } from "./constants";
 import { ansi24 } from "./ui";
 
 const PROTECTED_FROM_NON_CODE: ReadonlySet<string> = new Set(["edit", "write"]);
@@ -154,6 +154,12 @@ export class ModeState {
 	/** Optional auto-title model override (modes.json:autoTitle). */
 	get autoTitleOverride(): { provider: string; id: string } | undefined {
 		return this.modes.autoTitle;
+	}
+
+	/** Effective auto-compact trigger percent: modes.json override or the
+	 *  built-in default. */
+	get autoCompactThreshold(): number {
+		return this.modes.autoCompactThreshold ?? AUTO_COMPACT_THRESHOLD;
 	}
 
 	computeActiveTools(name: ModeName, allToolNames: string[]): { tools: string[]; stripped: string[] } {
