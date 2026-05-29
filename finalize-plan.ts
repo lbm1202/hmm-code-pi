@@ -73,7 +73,7 @@ export function registerFinalizePlan(pi: ExtensionAPI, state: ModeState) {
 
 			if (!ctx.hasUI) {
 				await state.apply(targetMode, ctx);
-				pi.sendUserMessage(planMessageBody(planMarkdown), { deliverAs: "followUp" });
+				pi.sendUserMessage(planMessageBody(planMarkdown, targetMode), { deliverAs: "followUp" });
 				ctx.ui.notify(`Plan saved → ${planPath} (headless: auto current-session)`, "info");
 				return {
 					content: [
@@ -132,18 +132,10 @@ export function registerFinalizePlan(pi: ExtensionAPI, state: ModeState) {
 				state.pendingPlanPath = planPath;
 				state.pendingTargetMode = targetMode;
 
-				const editor = state.editorInstance;
-				const onSubmit = editor?.onSubmit as ((text: string) => void) | undefined;
-				if (typeof onSubmit === "function") {
+				if (state.hasEditor()) {
 					// Defer to next tick so the tool can fully return (terminate:true) before
 					// the new-session creation runs — avoids reentrant agent-loop issues.
-					setTimeout(() => {
-						try {
-							onSubmit.call(editor, "/plan-execute");
-						} catch (err) {
-							console.error("[modes] auto-trigger /plan-execute failed:", err);
-						}
-					}, 50);
+					setTimeout(() => state.submitSlash("/plan-execute"), 50);
 					ctx.ui.notify(`Plan saved → ${planPath}. Launching new ${targetMode} session…`, "info");
 					return {
 						content: [
@@ -190,7 +182,7 @@ export function registerFinalizePlan(pi: ExtensionAPI, state: ModeState) {
 				// SAME loop with the PRE-finalize_plan model. Stashing the body and
 				// dispatching from on("agent_end") starts a fresh loop that reads the
 				// post-apply (target-mode) model from agent.state.
-				state.pendingCurrentSessionPlanBody = planMessageBody(planMarkdown);
+				state.pendingCurrentSessionPlanBody = planMessageBody(planMarkdown, targetMode);
 				ctx.ui.notify(
 					`Switched to ${targetMode}. Plan will run after this turn ends.`,
 					"info",
@@ -283,11 +275,15 @@ function buildPlanMarkdown(
 	return `${lines.join("\n")}\n`;
 }
 
-function planMessageBody(planMarkdown: string): string {
+function planMessageBody(planMarkdown: string, targetMode: "code" | "debug"): string {
+	const modeLine =
+		targetMode === "debug"
+			? "You are now in DEBUG mode (handoff from plan). You have full bash/shell access for reproduction and investigation, but edit/write are disabled — diagnose per the plan, don't modify code."
+			: "You are now in CODE mode (handoff from plan). You are no longer read-only — edit/write/bash are available.";
 	return [
-		"You are now in CODE mode (handoff from plan). You are no longer read-only — edit/write/bash are available.",
+		modeLine,
 		"",
-		"Treat the plan below as authoritative scope. Implement exactly what it specifies; do not re-plan, expand scope, refactor adjacent code, or add features the plan did not ask for.",
+		"Treat the plan below as authoritative scope. Do exactly what it specifies; do not re-plan, expand scope, refactor adjacent code, or add features the plan did not ask for.",
 		"",
 		"First action: call todo_write with one item per plan step, then work through them one-by-one, marking in_progress before starting each and completed immediately after finishing.",
 		"",

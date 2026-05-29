@@ -1,5 +1,6 @@
 // /mode, /mode-set, /plan-execute, /reset, /thinking-toggle slash commands.
 
+import { existsSync } from "node:fs";
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { MODE_NAMES, type ModeName } from "./config";
 import { BINARY_THINKING_FORMATS, STATUS_KEYS } from "./constants";
@@ -353,6 +354,10 @@ async function planExecuteHandler(rt: Runtime, ctx: ExtensionContext): Promise<v
 	const { state } = rt;
 	let planPath = state.pendingPlanPath;
 	const targetMode = state.pendingTargetMode ?? "code";
+	// Stale-stash guard: if the stashed plan file was moved/deleted between
+	// finalize_plan and this deferred trigger, fall back to the latest plan
+	// rather than handing the new session a path that no longer exists.
+	if (planPath && !existsSync(planPath)) planPath = undefined;
 	if (!planPath) {
 		planPath = findLatestPlan();
 		if (!planPath) {
@@ -418,13 +423,5 @@ async function planExecuteHandler(rt: Runtime, ctx: ExtensionContext): Promise<v
  *  ctx.reload() but the editor's onSubmit routes through prompt() which
  *  recognises the slash prefix and runs the command. */
 function triggerReload(rt: Runtime): void {
-	const editor = rt.state.editorInstance ?? rt.editorInstance;
-	const submit = (editor as { onSubmit?: (s: string) => void } | undefined)?.onSubmit;
-	if (typeof submit === "function") {
-		try {
-			submit.call(editor, "/reload");
-		} catch (err) {
-			console.error("[modes:commands] auto /reload failed:", err);
-		}
-	}
+	rt.state.submitSlash("/reload");
 }

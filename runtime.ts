@@ -8,8 +8,6 @@ import type { ModeState } from "./state";
 export interface Runtime {
 	pi: ExtensionAPI;
 	state: ModeState;
-	/** Set by hooks.ts in session_start; consumed by shortcuts/commands. */
-	editorInstance: any;
 	/** Set by hooks.ts when the footer factory runs. Flush footer cache. */
 	invalidateFooter?: () => void;
 	/** Re-render TUI editor; no-op when editor not yet created. */
@@ -20,10 +18,10 @@ export function createRuntime(pi: ExtensionAPI, state: ModeState): Runtime {
 	const rt: Runtime = {
 		pi,
 		state,
-		editorInstance: undefined,
 		invalidateFooter: undefined,
 		requestRender() {
-			rt.editorInstance?.tui?.requestRender?.();
+			// Editor lives on ModeState (single source of truth).
+			rt.state.editorInstance?.tui?.requestRender?.();
 		},
 	};
 	state.onApply = () => {

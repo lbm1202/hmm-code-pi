@@ -108,17 +108,7 @@ export function registerHooks(rt: Runtime): void {
 			);
 			// editor isn't created yet at this point — defer until setEditorComponent
 			// runs later in this same session_start handler.
-			setTimeout(() => {
-				const editor = state.editorInstance;
-				const submit = (editor as { onSubmit?: (s: string) => void } | undefined)?.onSubmit;
-				if (typeof submit === "function") {
-					try {
-						submit.call(editor, "/reload");
-					} catch (err) {
-						console.error("[modes:hooks] auto /reload failed:", err);
-					}
-				}
-			}, 500);
+			setTimeout(() => state.submitSlash("/reload"), 500);
 		}
 
 		if (ctx.hasUI) {
@@ -216,6 +206,32 @@ function setupHeaderFooter(rt: Runtime, ctx: any): void {
 function setupRuntimeHooks(rt: Runtime): void {
 	const { pi, state } = rt;
 
+	// Compact-in-flight tracking with a watchdog. Without the watchdog, if
+	// compact() returns but neither onComplete nor session_compact ever fires
+	// (provider error swallowed inside Pi, a queued no-op, etc.), the flag stays
+	// true forever and the turn_end guard below silently disables auto-compact
+	// for the rest of the session — the exact late-trigger we're avoiding.
+	let compactWatchdog: any;
+	const armCompact = (): void => {
+		state.compactInFlight = true;
+		if (compactWatchdog) clearTimeout(compactWatchdog);
+		compactWatchdog = setTimeout(() => {
+			compactWatchdog = undefined;
+			if (state.compactInFlight) {
+				console.error("[modes:hooks] compact watchdog: no completion in 60s — re-arming auto-compact");
+				state.compactInFlight = false;
+			}
+		}, 60_000);
+		compactWatchdog?.unref?.();
+	};
+	const disarmCompact = (): void => {
+		if (compactWatchdog) {
+			clearTimeout(compactWatchdog);
+			compactWatchdog = undefined;
+		}
+		state.compactInFlight = false;
+	};
+
 	// Model swaps from /model, /preset, etc. → refresh footer + status.
 	pi.on("model_select", async (event: any, ctxMs: any) => {
 		const newId = event?.model?.id ?? event?.id;
@@ -300,10 +316,10 @@ function setupRuntimeHooks(rt: Runtime): void {
 	// Auto-compact: bail at the threshold to avoid Pi's reserveTokens trigger
 	// firing too late.
 	pi.on("session_before_compact", async () => {
-		state.compactInFlight = true;
+		armCompact();
 	});
 	pi.on("session_compact", async () => {
-		state.compactInFlight = false;
+		disarmCompact();
 		rt.invalidateFooter?.();
 		rt.requestRender();
 	});
@@ -327,7 +343,7 @@ function setupRuntimeHooks(rt: Runtime): void {
 		}
 		if (state.compactInFlight) return;
 		if (typeof pct !== "number" || pct < AUTO_COMPACT_THRESHOLD) return;
-		state.compactInFlight = true;
+		armCompact();
 		ctx2.ui.notify(
 			`Auto-compacting at ${pct.toFixed(1)}% (threshold ${AUTO_COMPACT_THRESHOLD}%)…`,
 			"info",
@@ -335,7 +351,7 @@ function setupRuntimeHooks(rt: Runtime): void {
 		try {
 			(ctx2 as any).compact?.({
 				onComplete: () => {
-					state.compactInFlight = false;
+					disarmCompact();
 					rt.invalidateFooter?.();
 					rt.requestRender();
 				},
@@ -343,7 +359,7 @@ function setupRuntimeHooks(rt: Runtime): void {
 		} catch (err) {
 			console.error("[modes:hooks] auto-compact call failed:", err);
 			ctx2.ui.notify(`Auto-compact failed: ${err}`, "warning");
-			state.compactInFlight = false;
+			disarmCompact();
 		}
 	});
 
@@ -414,7 +430,6 @@ function setupEditor(rt: Runtime, ctx: any): void {
 			configurable: true,
 		});
 		state.editorInstance = editor;
-		rt.editorInstance = editor;
 		return editor;
 	});
 }

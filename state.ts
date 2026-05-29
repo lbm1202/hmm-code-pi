@@ -339,6 +339,30 @@ export class ModeState {
 		];
 	}
 
+	/** Whether the interactive editor is wired. False in RPC mode before the
+	 *  editor component is created (and in pure-headless runs). */
+	hasEditor(): boolean {
+		const submit = (this.editorInstance as { onSubmit?: unknown } | undefined)?.onSubmit;
+		return typeof submit === "function";
+	}
+
+	/** Fake-submit a slash command by driving the editor's onSubmit. This is the
+	 *  only way extension code can run a command like /reload or /plan-execute:
+	 *  pi.sendUserMessage skips the slash-command path (expandPromptTemplates is
+	 *  false there). Returns false if the editor isn't available. */
+	submitSlash(cmd: string): boolean {
+		const editor = this.editorInstance;
+		const submit = (editor as { onSubmit?: (s: string) => void } | undefined)?.onSubmit;
+		if (typeof submit !== "function") return false;
+		try {
+			submit.call(editor, cmd);
+			return true;
+		} catch (err) {
+			console.error(`[modes] submitSlash(${cmd}) failed:`, err);
+			return false;
+		}
+	}
+
 	restoreFromSession(ctx: ExtensionContext): ModeName {
 		const entries = ctx.sessionManager.getEntries();
 		const last = entries
