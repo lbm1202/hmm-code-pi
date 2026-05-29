@@ -7,6 +7,10 @@ This extension is **not** published to npm directly; it ships bundled inside the
 
 ## [Unreleased]
 
+## [0.1.1-rc1] — 2026-05-29
+
+Pre-release (release candidate) — ships bundled in hmm-code-vscode 0.1.1-rc1.
+
 ### Added
 - `modes.json:autoCompactThreshold` — overrides the built-in `AUTO_COMPACT_THRESHOLD` for context auto-summarization. Clamped to `[40, 95]` on load; editable from the VS Code settings panel.
 - `LICENSE` (MIT).
