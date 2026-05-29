@@ -80,7 +80,6 @@ const KEYBINDING_OVERRIDES: Record<string, string[]> = {
 	"app.thinking.toggle": [],
 	"app.tree.filter.noTools": [],
 };
-const KEYBINDING_OVERRIDES_TO_REMOVE: string[] = [];
 
 const DESIRED_SETTINGS: Record<string, unknown> = {
 	quietStartup: true,
@@ -110,12 +109,6 @@ export function ensureKeybindingsOverride(): { updated: boolean; path: string } 
 		const current = existing[action];
 		if (!Array.isArray(current) || !arraysEqual(current as string[], keys)) {
 			existing[action] = keys;
-			updated = true;
-		}
-	}
-	for (const action of KEYBINDING_OVERRIDES_TO_REMOVE) {
-		if (action in existing) {
-			delete existing[action];
 			updated = true;
 		}
 	}

@@ -50,9 +50,10 @@ export function registerRequestModeSwitch(pi: ExtensionAPI, state: ModeState) {
 				};
 			}
 
+			// confirm(title, message) — title is the short header, message the body.
 			const confirmed = await ctx.ui.confirm(
-				`${params.reason}\n\nSwitch from ${state.current} to ${target}?`,
 				"Mode switch?",
+				`${params.reason}\n\nSwitch from ${state.current} to ${target}?`,
 			);
 
 			if (!confirmed) {

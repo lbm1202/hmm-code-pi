@@ -10,8 +10,6 @@
 export interface ToolPaths {
 	/** Workspace-relative or absolute path strings that this tool touches. */
 	paths: string[];
-	/** True for tools that mutate the file system (edit/write/multi_edit). */
-	mutates: boolean;
 }
 
 function asString(v: unknown): string {
@@ -27,17 +25,17 @@ export function extractPaths(toolName: string, input: any): ToolPaths {
 		case "ls":
 		case "find": {
 			const p = asString(input?.path ?? input?.file_path);
-			return { paths: p ? [p] : [], mutates: false };
+			return { paths: p ? [p] : [] };
 		}
 		case "grep": {
 			// path is the SEARCH root — treat as read.
 			const p = asString(input?.path ?? input?.glob);
-			return { paths: p ? [p] : [], mutates: false };
+			return { paths: p ? [p] : [] };
 		}
 		case "edit":
 		case "write": {
 			const p = asString(input?.path ?? input?.file_path);
-			return { paths: p ? [p] : [], mutates: true };
+			return { paths: p ? [p] : [] };
 		}
 		case "multi_edit": {
 			// Pi's multi_edit and similar batch tools — collect every per-edit path.
@@ -49,9 +47,9 @@ export function extractPaths(toolName: string, input: any): ToolPaths {
 				const p = asString(e?.path ?? e?.file_path);
 				if (p) set.add(p);
 			}
-			return { paths: [...set], mutates: true };
+			return { paths: [...set] };
 		}
 		default:
-			return { paths: [], mutates: false };
+			return { paths: [] };
 	}
 }
