@@ -70,7 +70,7 @@ export function registerAskUser(pi: ExtensionAPI) {
 				const otherLabel = `${q.options.length + 1}. Other (type your own)`;
 				labels.push(otherLabel);
 
-				const titlePrefix = multi ? `[${q.topic}] (선택 가능: 다중) ` : `[${q.topic}] `;
+				const titlePrefix = multi ? `[${q.topic}] (multi-select) ` : `[${q.topic}] `;
 
 				if (multi) {
 					// TUI multi-select: Pi doesn't have a native multi-pick UI, so we
@@ -79,12 +79,12 @@ export function registerAskUser(pi: ExtensionAPI) {
 					// free-text). RPC clients (VS Code webview) instead receive the
 					// labels joined by "\n" and return a comma-separated string of
 					// chosen labels in one shot — we detect both paths below.
-					const DONE = `${q.options.length + 2}. ✓ Done (선택 완료)`;
+					const DONE = `${q.options.length + 2}. ✓ Done`;
 					const labelsForMulti = [...labels, DONE];
 					const picked = new Set<string>();
 					let otherText: string | undefined;
 					while (true) {
-						const title = `${titlePrefix}${q.question}${picked.size > 0 ? `\n\n선택됨: ${[...picked].join(", ")}` : ""}`;
+						const title = `${titlePrefix}${q.question}${picked.size > 0 ? `\n\nSelected: ${[...picked].join(", ")}` : ""}`;
 						const choice = await ctx.ui.select(title, labelsForMulti);
 						if (choice == null) {
 							return {
