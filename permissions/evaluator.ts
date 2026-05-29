@@ -7,7 +7,8 @@
 // Within a single layer, last-match-wins (Kilo semantics) — captured by
 // glob.ts:lastMatch.
 
-import { isAbsolute, relative } from "node:path";
+import { homedir } from "node:os";
+import { isAbsolute, relative, resolve } from "node:path";
 import type { ModeName } from "../config";
 import { lastMatch, lastMatchShell } from "./glob";
 import type { Decision, Permissions, Ruleset, ToolKey, Verdict } from "./types";
@@ -61,6 +62,28 @@ function normalize(target: string, cwd: string): string {
 	if (!isAbsolute(target)) return target.replace(/\\/g, "/");
 	if (isExternal(target, cwd)) return target.replace(/\\/g, "/");
 	return relative(cwd, target).replace(/\\/g, "/") || ".";
+}
+
+const HOME = homedir().replace(/\\/g, "/");
+
+/** Resolve an extracted path to an absolute, lexically-normalized form against
+ *  the workspace cwd. Expands a leading `~/`, then makes the path absolute and
+ *  collapses `.`/`..` segments. This MUST run before rule evaluation: without
+ *  it a relative escape like `../../../etc/passwd` is never seen as absolute,
+ *  so the `external_directory` gate is skipped and the path matches the in-cwd
+ *  `read: { "**": "allow" }` rule — a silent sandbox bypass. `~/.ssh/id_rsa`
+ *  has the same problem (treated as a literal relative path) until expanded.
+ *
+ *  We deliberately do NOT realpath()-resolve symlinks: on macOS the canonical
+ *  form of `/tmp` is `/private/tmp`, which would break the `/tmp/**: allow`
+ *  carve-out in defaults.ts, and realpath adds TOCTOU. Lexical resolution
+ *  closes the exploitable relative-escape hole; symlink hardening is a
+ *  separate, carve-out-aware change. */
+export function canonicalize(raw: string, cwd: string): string {
+	let p = raw.replace(/\\/g, "/");
+	if (p === "~") p = HOME;
+	else if (p.startsWith("~/")) p = HOME + p.slice(1);
+	return resolve(cwd, p).replace(/\\/g, "/");
 }
 
 export interface EvaluateInput {
@@ -132,12 +155,15 @@ export function evaluate(input: EvaluateInput): Decision {
 		let v = evaluateOne(input, cmd, "bash", /* pathMode */ false);
 		let externalSubject = "";
 		for (const raw of extractAbsolutePathsFromBash(cmd, input.cwd)) {
-			if (!isExternal(raw, input.cwd)) continue;
-			const ext = evaluateExternal(input, raw.replace(/\\/g, "/"));
+			// Collapse `..` before matching so `/tmp/../../etc/passwd` can't ride
+			// the `/tmp/**: allow` carve-out to reach an external path.
+			const abs = canonicalize(raw, input.cwd);
+			if (!isExternal(abs, input.cwd)) continue;
+			const ext = evaluateExternal(input, abs);
 			const combined = strongest(v, ext);
 			if (VERDICT_RANK[combined] > VERDICT_RANK[v]) {
 				v = combined;
-				externalSubject = raw;
+				externalSubject = abs;
 			}
 		}
 		return {
@@ -157,12 +183,15 @@ export function evaluate(input: EvaluateInput): Decision {
 	let worst: Verdict = "allow";
 	let worstSubject = "";
 	for (const raw of input.paths) {
-		const subject = normalize(raw, input.cwd);
+		// Resolve to an absolute, dot-collapsed path first so a relative escape
+		// (`../../etc/passwd`) reaches the external_directory layer below.
+		const abs = canonicalize(raw, input.cwd);
+		const subject = normalize(abs, input.cwd);
 		const pathVerdict = evaluateOne(input, subject, key);
 		// External directory layer (independent of read/edit/write ruleset)
 		let extVerdict: Verdict = "allow";
-		if (isAbsolute(raw) && isExternal(raw, input.cwd)) {
-			extVerdict = evaluateExternal(input, raw.replace(/\\/g, "/"));
+		if (isExternal(abs, input.cwd)) {
+			extVerdict = evaluateExternal(input, abs);
 		}
 		const combined = strongest(pathVerdict, extVerdict);
 		if (VERDICT_RANK[combined] > VERDICT_RANK[worst]) {

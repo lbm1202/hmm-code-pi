@@ -74,8 +74,18 @@ function patternToRegex(pattern: string, pathMode: boolean): RegExp {
 		i++;
 	}
 	re += "$";
-	return new RegExp(re);
+	// Path matching is case-insensitive: the project targets macOS/Windows
+	// where the filesystem is case-insensitive, so a `*.pem: deny` rule must
+	// also catch `secret.PEM`. Shell-command matching stays case-sensitive
+	// (commands are). Widening only ever lets a deny/ask catch more, which is
+	// the safe direction for a security matcher.
+	return new RegExp(re, pathMode ? "i" : "");
 }
+
+// A regex that matches nothing — used when a user-supplied pattern fails to
+// compile, so one bad rule is ignored instead of throwing out of the hook and
+// blocking every tool call for the rest of the session.
+const NEVER_MATCH = /(?!)/;
 
 const regexCachePath = new Map<string, RegExp>();
 const regexCacheShell = new Map<string, RegExp>();
@@ -83,7 +93,14 @@ function regexFor(pattern: string, pathMode: boolean): RegExp {
 	const cache = pathMode ? regexCachePath : regexCacheShell;
 	let r = cache.get(pattern);
 	if (!r) {
-		r = patternToRegex(pattern, pathMode);
+		try {
+			r = patternToRegex(pattern, pathMode);
+		} catch (err) {
+			console.error(
+				`[modes:permissions] ignoring invalid glob pattern ${JSON.stringify(pattern)}: ${err}`,
+			);
+			r = NEVER_MATCH;
+		}
 		cache.set(pattern, r);
 	}
 	return r;

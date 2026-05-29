@@ -12,7 +12,7 @@
 import { isAbsolute, relative } from "node:path";
 import type { Runtime } from "../runtime";
 import { BASE_DEFAULTS, MODE_DEFAULTS } from "./defaults";
-import { evaluate } from "./evaluator";
+import { canonicalize, evaluate } from "./evaluator";
 import { extractPaths } from "./extract-paths";
 import { loadGlobalPermissions, loadProjectPermissions } from "./loader";
 import { loadIgnore } from "./piignore";
@@ -50,7 +50,9 @@ export function registerPermissions(rt: Runtime): void {
 		if (ignore.hasRules()) {
 			const { paths } = extractPaths(toolName, input);
 			for (const p of paths) {
-				const subject = toIgnoreSubject(p, cwd);
+				// Canonicalize first so a relative escape resolves to an absolute
+				// path; toIgnoreSubject then correctly skips anything outside cwd.
+				const subject = toIgnoreSubject(canonicalize(p, cwd), cwd);
 				if (subject === undefined) continue;
 				if (ignore.isBlocked(subject)) {
 					return {
