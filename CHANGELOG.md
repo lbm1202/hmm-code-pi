@@ -12,6 +12,7 @@ This extension is **not** published to npm directly; it ships bundled inside the
 - `loadModes` validates the shape of `autoTitle`/`compactModel` (must be `{provider,id}`) and `modelAliases`/`modelAllowlist` (must be objects), degrading malformed `modes.json` values to defaults instead of propagating them downstream.
 
 ### Changed
+- `/plan-execute` now runs only the plan that `finalize_plan` stashed for handoff (`state.pendingPlanPath`); the "newest `plan-*.md` by mtime" fallback (`findLatestPlan`, which scanned the global `~/.pi/agent/plans/` across all projects) is gone. The fallback only ever fed the manual-typed `/plan-execute`, where it could launch an unrelated plan from another workspace; the finalize_plan handoff always passes an explicit path and is unaffected. With nothing staged, `/plan-execute` now reports "No plan staged for handoff" instead of guessing.
 - Internal: extracted the compaction policy + watchdog state machine out of `hooks.ts` into `compaction.ts` (hooks.ts 525 → 389 lines). Added a `node --test` permission test suite (`extract-paths` / `glob` / `bash-rules`); run with `npm test`.
 - Internal: split `ModeState` (state.ts 413 → 319 lines) — the TUI footer box rendering moved to `mode-box.ts` and the active-tool resolution to `mode-tools.ts`, where the "edit/write are code-only" invariant is now unit-tested.
 

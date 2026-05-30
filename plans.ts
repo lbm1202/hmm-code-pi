@@ -1,7 +1,7 @@
-// Plan file paths + discovery helpers. Used by finalize_plan (write) and
-// /plan-execute (read latest).
+// Plan file paths + allocation helper. Used by finalize_plan to write a new
+// uniquely-named plan under PLANS_DIR.
 
-import { existsSync, readdirSync, statSync } from "node:fs";
+import { existsSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 
@@ -40,21 +40,4 @@ export function uniquePlanPath(): string {
 		if (!existsSync(full)) return full;
 	}
 	return join(PLANS_DIR, `plan-${date}-${Date.now()}.md`);
-}
-
-/** Latest plan-*.md by mtime, or undefined when no plans exist. */
-export function findLatestPlan(): string | undefined {
-	if (!existsSync(PLANS_DIR)) return undefined;
-	try {
-		const candidates = readdirSync(PLANS_DIR)
-			.filter((f) => f.startsWith("plan-") && f.endsWith(".md"))
-			.map((f) => {
-				const full = join(PLANS_DIR, f);
-				return { full, mtime: statSync(full).mtimeMs };
-			})
-			.sort((a, b) => b.mtime - a.mtime);
-		return candidates[0]?.full;
-	} catch {
-		return undefined;
-	}
 }

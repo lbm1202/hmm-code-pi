@@ -5,7 +5,6 @@ import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { MODE_NAMES, type ModeName } from "./config";
 import { BINARY_THINKING_FORMATS, MODE_STATE_ENTRY, STATUS_KEYS } from "./constants";
 import { updateModeConfigField } from "./config-io";
-import { findLatestPlan } from "./plans";
 import type { Runtime } from "./runtime";
 
 const THINKING_LEVELS = ["off", "minimal", "low", "medium", "high", "xhigh"] as const;
@@ -402,15 +401,15 @@ async function planExecuteHandler(rt: Runtime, ctx: ExtensionContext): Promise<v
 	let planPath = state.pendingPlanPath;
 	const targetMode = state.pendingTargetMode ?? "code";
 	// Stale-stash guard: if the stashed plan file was moved/deleted between
-	// finalize_plan and this deferred trigger, fall back to the latest plan
-	// rather than handing the new session a path that no longer exists.
+	// finalize_plan and this deferred trigger, treat it as absent.
 	if (planPath && !existsSync(planPath)) planPath = undefined;
 	if (!planPath) {
-		planPath = findLatestPlan();
-		if (!planPath) {
-			ctx.ui.notify("No plan found in .pi/plans/. Call finalize_plan in plan mode first.", "error");
-			return;
-		}
+		// /plan-execute consumes the plan finalize_plan stashes for handoff — it is
+		// the mechanism behind the "new session" choice, not a standalone "run
+		// whatever plan is newest on disk" command. With nothing staged there's no
+		// unambiguous plan to run, so bail instead of guessing the latest file.
+		ctx.ui.notify("No plan staged for handoff. Use finalize_plan in plan mode to launch one.", "error");
+		return;
 	}
 
 	// Reference the plan FILE rather than pasting the full text into the
