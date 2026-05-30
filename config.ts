@@ -35,6 +35,10 @@ export interface ModesFile {
 	/** Optional override for the auto-title model (consumed by auto-title.ts).
 	 * When set, takes priority over the GPT-candidate fallback list. */
 	autoTitle?: ModelRef;
+	/** Optional override for the context-compaction (summary) model. When set,
+	 *  hooks.ts generates the compaction summary with this model instead of the
+	 *  active session model (so summarization can run on a cheaper/faster one). */
+	compactModel?: ModelRef;
 	/** Per-provider model id allowlist consumed by the VS Code extension to
 	 *  filter the model picker. Pi itself ignores this — built-in providers
 	 *  like openai-codex hardcode their model list in pi-ai and can't be
@@ -154,6 +158,7 @@ export function loadModes(_cwd: string): ModesFile {
 		modes: merged,
 		modelAliases: raw.modelAliases ?? {},
 		autoTitle: raw.autoTitle,
+		compactModel: raw.compactModel,
 		modelAllowlist: raw.modelAllowlist ?? {},
 		permissions: raw.permissions,
 		autoCompactThreshold,

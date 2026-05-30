@@ -2,7 +2,7 @@
 // session_start (header/footer/editor setup + initial mode apply), token/state
 // invalidation, auto-compact at the threshold, and deferred plan dispatch.
 
-import { CustomEditor } from "@earendil-works/pi-coding-agent";
+import { CustomEditor, compact as runCompaction } from "@earendil-works/pi-coding-agent";
 import { existsSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
@@ -322,9 +322,33 @@ function setupRuntimeHooks(rt: Runtime): void {
 	});
 
 	// Auto-compact: bail at the threshold to avoid Pi's reserveTokens trigger
-	// firing too late.
-	pi.on("session_before_compact", async () => {
+	// firing too late. Also: if a dedicated compaction model is configured
+	// (modes.json:compactModel), generate the summary with THAT model and hand
+	// it back so Pi doesn't run summarization on the active session model.
+	pi.on("session_before_compact", async (event: any, ctx: any) => {
 		armCompact();
+		const ref = state.compactModelOverride;
+		if (!ref?.provider || !ref?.id) return; // no override → Pi uses active model
+		try {
+			const model = ctx.modelRegistry?.find?.(ref.provider, ref.id);
+			if (!model) return;
+			const auth = await ctx.modelRegistry?.getApiKeyAndHeaders?.(model);
+			if (!auth?.ok) return;
+			const result = await runCompaction(
+				event.preparation,
+				model,
+				auth.apiKey,
+				auth.headers,
+				event.customInstructions,
+				event.signal,
+				"off",
+				undefined,
+			);
+			return { compaction: result };
+		} catch (err) {
+			// Fall back to Pi's default (active-model) compaction on any failure.
+			console.error("[modes:hooks] compactModel summary failed — using active model:", err);
+		}
 	});
 	pi.on("session_compact", async () => {
 		disarmCompact();

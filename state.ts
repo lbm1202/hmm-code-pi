@@ -156,6 +156,11 @@ export class ModeState {
 		return this.modes.autoTitle;
 	}
 
+	/** Optional model override for context compaction (consumed by hooks.ts). */
+	get compactModelOverride(): { provider: string; id: string } | undefined {
+		return this.modes.compactModel;
+	}
+
 	/** Effective auto-compact trigger percent: modes.json override or the
 	 *  built-in default. */
 	get autoCompactThreshold(): number {
