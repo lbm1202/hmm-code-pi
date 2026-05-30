@@ -1,0 +1,24 @@
+name: CI
+
+# Runs on every push to main and on pull requests. The test suite is
+# zero-dependency (node --test over native-TS files using only node: builtins
+# and type-only imports), so there is no install step.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '26'
+
+      - name: Run tests
+        run: npm test
