@@ -117,6 +117,12 @@ export async function compactHandler(rt: Runtime, ctx: ExtensionContext): Promis
 		ctx.ui.notify("Compaction already in progress.", "info");
 		return;
 	}
+	// Mark in-flight BEFORE triggering: compact() aborts the current turn, which
+	// finalizes a message_end — this flag makes auto-title skip that one so it
+	// doesn't fire a second request alongside the summary. The session_compact
+	// event (hooks.ts disarmCompact) clears it on success; clear it here on the
+	// error paths so a "Nothing to compact" doesn't leave it stuck.
+	state.compactInFlight = true;
 	ctx.ui.notify("Compacting context…", "info");
 	try {
 		(ctx as any).compact?.({
@@ -125,9 +131,13 @@ export async function compactHandler(rt: Runtime, ctx: ExtensionContext): Promis
 				rt.invalidateFooter?.();
 				rt.requestRender();
 			},
-			onError: (err: unknown) => ctx.ui.notify(`Compaction failed: ${err}`, "warning"),
+			onError: (err: unknown) => {
+				state.compactInFlight = false;
+				ctx.ui.notify(`Compaction failed: ${err}`, "warning");
+			},
 		});
 	} catch (err) {
+		state.compactInFlight = false;
 		ctx.ui.notify(`Compaction failed: ${err}`, "warning");
 	}
 }

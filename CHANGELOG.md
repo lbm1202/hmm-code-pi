@@ -12,6 +12,8 @@ This extension is **not** published to npm directly; it ships bundled inside the
 
 ### Changed
 - Auto-compact watchdog timeout 60s → 10 min. Compaction summarizes the whole conversation with the active model, so a large context on a reasoning model can legitimately take minutes; the old 60s backstop re-armed mid-summary and risked double-triggering a second compaction.
+- Auto-title no longer fires on a turn that's also compacting (compaction in flight, or context ≥ the auto-compact threshold) — it was sending a second request to the (often local) session model alongside the compaction summary.
+- Auto-title language follows the VS Code `hmm-code.language` setting (passed in as `HMM_CODE_LANG`); the standalone TUI still matches the conversation language.
 
 ## [0.1.1-rc1] — 2026-05-29
 

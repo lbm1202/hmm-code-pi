@@ -10,9 +10,23 @@ import type { ModeState } from "./state";
 
 const titledSessions = new Set<string>();
 
-const TITLE_SYSTEM_PROMPT =
-	"You generate a very short (3–7 words) descriptive title summarizing what the user is trying to do. " +
-	"Use the user's language. Respond with ONLY the title — no quotes, no markdown, no preamble, no trailing punctuation.";
+// Title language follows the VS Code extension's hmm-code.language setting,
+// passed in as HMM_CODE_LANG ("en"/"ko") when Pi is spawned by the .vsix. In
+// the standalone TUI (no env) it falls back to matching the conversation.
+function titleSystemPrompt(): string {
+	const lang = process.env.HMM_CODE_LANG;
+	const langLine =
+		lang === "ko"
+			? "Always write the title in Korean."
+			: lang === "en"
+				? "Always write the title in English."
+				: "Use the user's language.";
+	return (
+		"You generate a very short (3–7 words) descriptive title summarizing what the user is trying to do. " +
+		langLine +
+		" Respond with ONLY the title — no quotes, no markdown, no preamble, no trailing punctuation."
+	);
+}
 
 // Last-resort cheap GPT candidates, tried only when there's no active or
 // code-mode model. First one found + authed wins. To force a dedicated naming
@@ -66,6 +80,23 @@ function resolveTitleModel(ctx: any, state: ModeState): { model: any; via: strin
 export function registerAutoTitle(pi: ExtensionAPI, state: ModeState): void {
 	pi.on("message_end", async (event: any, ctx: any) => {
 		if (event?.message?.role !== "assistant") return;
+
+		// Don't let title generation piggyback on a turn that's also compacting:
+		// it would fire a second LLM request to the (often local) session model
+		// right alongside the compaction summary. Two cases:
+		//   - a compaction is already in flight — the manual /compact path aborts
+		//     the current turn, which finalizes this very message_end while
+		//     compactInFlight is set;
+		//   - context is at/over the auto-compact threshold, so the upcoming
+		//     turn_end is about to compact (message_end fires before turn_end, so
+		//     compactInFlight isn't set yet — check usage directly).
+		if (state.compactInFlight) return;
+		try {
+			const pct = ctx.getContextUsage?.()?.percent;
+			if (typeof pct === "number" && pct >= state.autoCompactThreshold) return;
+		} catch {
+			/* getContextUsage unavailable — fall through and title normally */
+		}
 
 		const sessionId: string | undefined = ctx.sessionManager?.getSessionId?.();
 		if (!sessionId || titledSessions.has(sessionId)) return;
@@ -135,7 +166,7 @@ async function runTitleGen(args: TitleGenArgs): Promise<void> {
 	let title = "";
 	try {
 		const context = {
-			systemPrompt: TITLE_SYSTEM_PROMPT,
+			systemPrompt: titleSystemPrompt(),
 			messages: [
 				{
 					role: "user" as const,
