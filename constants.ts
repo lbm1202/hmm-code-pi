@@ -38,6 +38,11 @@ export const COMPACT_HARDCAP_MAX = 95;
  *  Keep it one line. */
 export const DEFAULT_AUTO_TITLE_PROMPT = "You generate a very short (3–7 words) descriptive title summarizing what the user is trying to do. Respond with ONLY the title — no quotes, no markdown, no preamble, no trailing punctuation.";
 
+/** Session custom-entry type that records the active mode. Written when a mode
+ *  is applied (state.ts) and when a plan handoff pre-seeds a new session
+ *  (commands.ts); read back on restore (state.ts). */
+export const MODE_STATE_ENTRY = "mode-state";
+
 /** Models whose thinking is binary (on/off) rather than leveled. */
 export const BINARY_THINKING_FORMATS = new Set(["qwen-chat-template", "qwen", "zai"]);
 

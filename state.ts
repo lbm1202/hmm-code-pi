@@ -1,6 +1,6 @@
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { MODE_NAMES, type ModeConfig, type ModeName, type ModesFile } from "./config";
-import { AUTO_COMPACT_THRESHOLD, STATUS_KEYS } from "./constants";
+import { AUTO_COMPACT_THRESHOLD, MODE_STATE_ENTRY, STATUS_KEYS } from "./constants";
 import { ansi24 } from "./ui";
 
 const PROTECTED_FROM_NON_CODE: ReadonlySet<string> = new Set(["edit", "write"]);
@@ -256,7 +256,7 @@ export class ModeState {
 			appliedModelId && cfgModel && cfgModel !== "none" && typeof cfgModel === "object"
 				? cfgModel.provider
 				: ctx.model?.provider;
-		this.pi.appendEntry("mode-state", { mode: name });
+		this.pi.appendEntry(MODE_STATE_ENTRY, { mode: name });
 		this.updateStatus(ctx);
 	}
 
@@ -403,7 +403,7 @@ export class ModeState {
 		const last = entries
 			.filter(
 				(e: { type: string; customType?: string }) =>
-					e.type === "custom" && e.customType === "mode-state",
+					e.type === "custom" && e.customType === MODE_STATE_ENTRY,
 			)
 			.pop() as { data?: { mode?: ModeName } } | undefined;
 		const restored = last?.data?.mode;

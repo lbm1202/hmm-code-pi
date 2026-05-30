@@ -1,6 +1,12 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
 
+/** Recover the canonical option value from a displayed label: drop the
+ *  "N. " numbering prefix and any " — description" suffix the picker appended. */
+function stripOptionLabel(label: string): string {
+	return label.replace(/^\d+\.\s+/, "").split(" — ")[0];
+}
+
 interface AskAnswer {
 	topic: string;
 	question: string;
@@ -109,11 +115,9 @@ export function registerAskUser(pi: ExtensionAPI) {
 								.map((p) => p.trim())
 								.filter(Boolean);
 							for (const p of parts) {
-								const matched = labels.find(
-									(l) => l.replace(/^\d+\.\s+/, "").split(" — ")[0] === p,
-								);
+								const matched = labels.find((l) => stripOptionLabel(l) === p);
 								if (matched) {
-									picked.add(matched.replace(/^\d+\.\s+/, "").split(" — ")[0]);
+									picked.add(stripOptionLabel(matched));
 								} else {
 									// Treat as free-text other
 									otherText = otherText ? `${otherText}, ${p}` : p;
@@ -136,7 +140,7 @@ export function registerAskUser(pi: ExtensionAPI) {
 							continue;
 						}
 						// Numbered option — toggle in/out
-						const stripped = choice.replace(/^\d+\.\s+/, "").split(" — ")[0];
+						const stripped = stripOptionLabel(choice);
 						if (picked.has(stripped)) picked.delete(stripped);
 						else picked.add(stripped);
 					}
@@ -187,7 +191,7 @@ export function registerAskUser(pi: ExtensionAPI) {
 						multiSelect: false,
 					});
 				} else if (labels.includes(choice)) {
-					const stripped = choice.replace(/^\d+\.\s+/, "").split(" — ")[0];
+					const stripped = stripOptionLabel(choice);
 					answers.push({
 						topic: q.topic,
 						question: q.question,
