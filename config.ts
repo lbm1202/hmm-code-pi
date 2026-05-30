@@ -35,6 +35,15 @@ export interface ModesFile {
 	/** Optional override for the auto-title model (consumed by auto-title.ts).
 	 * When set, takes priority over the GPT-candidate fallback list. */
 	autoTitle?: ModelRef;
+	/** Optional override for the auto-title system prompt (consumed by
+	 *  auto-title.ts). When a non-empty string, it fully replaces the built-in
+	 *  language-aware default. Editable from the VS Code settings panel. */
+	autoTitlePrompt?: string;
+	/** Optional extra focus appended to the context-compaction (summary) prompt.
+	 *  Pi's base summary prompt can't be replaced, so this is added as
+	 *  "Additional focus: <text>" via customInstructions. Editable from the VS
+	 *  Code settings panel. */
+	compactInstructions?: string;
 	/** Optional override for the context-compaction (summary) model. When set,
 	 *  hooks.ts generates the compaction summary with this model instead of the
 	 *  active session model (so summarization can run on a cheaper/faster one). */
@@ -52,8 +61,16 @@ export interface ModesFile {
 	permissions?: Record<string, unknown>;
 	/** Context-usage percent at which auto-compact triggers. Overrides the
 	 *  built-in AUTO_COMPACT_THRESHOLD when present. Editable from the VS Code
-	 *  settings panel. Clamped to a sane range on load. */
+	 *  settings panel. Clamped to [50, 85] on load (the dynamic-compaction grace
+	 *  band needs threshold + DYNAMIC_COMPACT_GAP to stay under 100). */
 	autoCompactThreshold?: number;
+	/** Dynamic compaction (default on). When true, the agent's multi-step turn
+	 *  is preserved — compaction runs at the turn boundary (agent_end), not
+	 *  mid-loop, with a force-compact only past threshold + DYNAMIC_COMPACT_GAP.
+	 *  When false, compaction runs the moment usage crosses the threshold, even
+	 *  mid-loop (the legacy cut-and-compact behavior). Editable from the VS Code
+	 *  settings panel. */
+	dynamicCompaction?: boolean;
 }
 
 export const DEFAULT_MODES: Record<ModeName, ModeConfig> = {
@@ -146,21 +163,32 @@ export function loadModes(_cwd: string): ModesFile {
 		if (userCfg) merged[name] = { ...DEFAULT_MODES[name], ...userCfg };
 	}
 	const defaultMode = raw.defaultMode && MODE_NAMES.includes(raw.defaultMode) ? raw.defaultMode : "code";
-	// Auto-compact threshold: accept a finite number, clamp to [40, 95] so a
-	// stray value can't make compaction run every turn or never run. Out of
-	// range / non-numeric → omit so the built-in default applies.
+	// Auto-compact threshold: accept a finite number, clamp to [50, 85] so a
+	// stray value can't make compaction run every turn or never run, and the
+	// dynamic-compaction grace band (threshold + DYNAMIC_COMPACT_GAP) stays
+	// under 100. Out of range / non-numeric → omit so the built-in applies.
 	let autoCompactThreshold: number | undefined;
 	if (typeof raw.autoCompactThreshold === "number" && Number.isFinite(raw.autoCompactThreshold)) {
-		autoCompactThreshold = Math.min(95, Math.max(40, Math.round(raw.autoCompactThreshold)));
+		autoCompactThreshold = Math.min(85, Math.max(50, Math.round(raw.autoCompactThreshold)));
 	}
 	return {
 		defaultMode,
 		modes: merged,
 		modelAliases: raw.modelAliases ?? {},
 		autoTitle: raw.autoTitle,
+		autoTitlePrompt:
+			typeof raw.autoTitlePrompt === "string" && raw.autoTitlePrompt.trim()
+				? raw.autoTitlePrompt
+				: undefined,
+		compactInstructions:
+			typeof raw.compactInstructions === "string" && raw.compactInstructions.trim()
+				? raw.compactInstructions
+				: undefined,
 		compactModel: raw.compactModel,
 		modelAllowlist: raw.modelAllowlist ?? {},
 		permissions: raw.permissions,
 		autoCompactThreshold,
+		dynamicCompaction:
+			typeof raw.dynamicCompaction === "boolean" ? raw.dynamicCompaction : undefined,
 	};
 }

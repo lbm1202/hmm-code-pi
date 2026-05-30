@@ -8,6 +8,9 @@ This extension is **not** published to npm directly; it ships bundled inside the
 ## [Unreleased]
 
 ### Added
+- `modes.json:autoTitlePrompt` — optional full override of the auto-title system prompt (non-empty replaces the built-in language-aware default).
+- `modes.json:compactInstructions` — optional extra focus appended to the compaction prompt as "Additional focus: …" (passed as `customInstructions`; Pi's base summary prompt is unchanged). Both editable from the VS Code settings panel's new Prompts tab.
+- **Dynamic compaction** (`modes.json:dynamicCompaction`, default on). The agent's multi-step turn (work → tool → work → tool) is no longer cut mid-loop to compact: compaction runs at the turn boundary (`agent_end`) once usage passes the threshold, and only force-compacts mid-loop if usage climbs `DYNAMIC_COMPACT_GAP` (15%) past the threshold. Turning it off restores the legacy behavior (compact the moment the threshold is crossed, even mid-loop). Editable from the VS Code settings panel.
 - `/compact` slash command — manually compact the session context now (overrides Pi's built-in to add a "Compacting…/Context compacted." notify, footer refresh, and an in-flight guard). Shared by the VS Code compact button.
 - `modes.json:compactModel` — optional dedicated model for context compaction. When set, `session_before_compact` generates the summary with that model (via the exported `compact()`) instead of the active session model; falls back to the active model on any error. Editable from the VS Code settings panel.
 

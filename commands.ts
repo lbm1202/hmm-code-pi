@@ -123,9 +123,13 @@ export async function compactHandler(rt: Runtime, ctx: ExtensionContext): Promis
 	// event (hooks.ts disarmCompact) clears it on success; clear it here on the
 	// error paths so a "Nothing to compact" doesn't leave it stuck.
 	state.compactInFlight = true;
+	// Tell session_before_compact this is our intentional compaction (manual),
+	// not Pi's built-in auto trigger which that hook suppresses.
+	state.compactRequestedByUs = true;
 	ctx.ui.notify("Compacting context…", "info");
 	try {
 		(ctx as any).compact?.({
+			customInstructions: state.compactInstructionsOverride,
 			onComplete: () => {
 				ctx.ui.notify("Context compacted.", "info");
 				rt.invalidateFooter?.();
@@ -133,11 +137,13 @@ export async function compactHandler(rt: Runtime, ctx: ExtensionContext): Promis
 			},
 			onError: (err: unknown) => {
 				state.compactInFlight = false;
+				state.compactRequestedByUs = false;
 				ctx.ui.notify(`Compaction failed: ${err}`, "warning");
 			},
 		});
 	} catch (err) {
 		state.compactInFlight = false;
+		state.compactRequestedByUs = false;
 		ctx.ui.notify(`Compaction failed: ${err}`, "warning");
 	}
 }

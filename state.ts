@@ -63,6 +63,11 @@ export class ModeState {
 	autoApprove = false;
 	// Auto-compact bookkeeping: avoid retriggering while one is in flight.
 	compactInFlight = false;
+	// Set true immediately before WE call ctx.compact() (turn_end/agent_end
+	// policy, /compact command, VS Code button). The session_before_compact
+	// hook reads it to tell our intentional compaction apart from Pi's built-in
+	// auto trigger (which we suppress). Consumed (cleared) by the hook.
+	compactRequestedByUs = false;
 
 	/** Mode's configured default model, or undefined if mode has no default. */
 	defaultModelRef(): { provider: string; id: string } | undefined {
@@ -156,6 +161,18 @@ export class ModeState {
 		return this.modes.autoTitle;
 	}
 
+	/** Optional auto-title system-prompt override (consumed by auto-title.ts).
+	 *  Empty/unset → built-in language-aware default. */
+	get autoTitlePromptOverride(): string | undefined {
+		return this.modes.autoTitlePrompt;
+	}
+
+	/** Optional extra focus appended to the compaction prompt (consumed by
+	 *  hooks.ts / commands.ts as customInstructions). */
+	get compactInstructionsOverride(): string | undefined {
+		return this.modes.compactInstructions;
+	}
+
 	/** Optional model override for context compaction (consumed by hooks.ts). */
 	get compactModelOverride(): { provider: string; id: string } | undefined {
 		return this.modes.compactModel;
@@ -165,6 +182,13 @@ export class ModeState {
 	 *  built-in default. */
 	get autoCompactThreshold(): number {
 		return this.modes.autoCompactThreshold ?? AUTO_COMPACT_THRESHOLD;
+	}
+
+	/** Dynamic compaction on/off (default on). On → preserve the agent's
+	 *  multi-step turn, compact at the boundary. Off → legacy cut-and-compact
+	 *  the moment the threshold is crossed. */
+	get dynamicCompaction(): boolean {
+		return this.modes.dynamicCompaction ?? true;
 	}
 
 	computeActiveTools(name: ModeName, allToolNames: string[]): { tools: string[]; stripped: string[] } {

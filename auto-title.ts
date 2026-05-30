@@ -6,6 +6,7 @@
 
 import { completeSimple } from "@earendil-works/pi-ai";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import { DEFAULT_AUTO_TITLE_PROMPT } from "./constants";
 import type { ModeState } from "./state";
 
 const titledSessions = new Set<string>();
@@ -13,19 +14,21 @@ const titledSessions = new Set<string>();
 // Title language follows the VS Code extension's hmm-code.language setting,
 // passed in as HMM_CODE_LANG ("en"/"ko") when Pi is spawned by the .vsix. In
 // the standalone TUI (no env) it falls back to matching the conversation.
-function titleSystemPrompt(): string {
+function languageLine(): string {
 	const lang = process.env.HMM_CODE_LANG;
-	const langLine =
-		lang === "ko"
-			? "Always write the title in Korean."
-			: lang === "en"
-				? "Always write the title in English."
-				: "Use the user's language.";
-	return (
-		"You generate a very short (3–7 words) descriptive title summarizing what the user is trying to do. " +
-		langLine +
-		" Respond with ONLY the title — no quotes, no markdown, no preamble, no trailing punctuation."
-	);
+	return lang === "ko"
+		? "Always write the title in Korean."
+		: lang === "en"
+			? "Always write the title in English."
+			: "Use the user's language.";
+}
+
+function titleSystemPrompt(override?: string): string {
+	// The language line is ALWAYS enforced — even a custom override gets it
+	// appended, so the title language keeps following hmm-code.language. A
+	// non-empty override replaces the base prompt (DEFAULT_AUTO_TITLE_PROMPT).
+	const base = override && override.trim() ? override.trim() : DEFAULT_AUTO_TITLE_PROMPT;
+	return `${base} ${languageLine()}`;
 }
 
 // Last-resort cheap GPT candidates, tried only when there's no active or
@@ -134,6 +137,7 @@ export function registerAutoTitle(pi: ExtensionAPI, state: ModeState): void {
 			model,
 			userText,
 			assistantText,
+			promptOverride: state.autoTitlePromptOverride,
 		});
 	});
 }
@@ -144,10 +148,11 @@ interface TitleGenArgs {
 	model: unknown;
 	userText: string;
 	assistantText: string;
+	promptOverride?: string;
 }
 
 async function runTitleGen(args: TitleGenArgs): Promise<void> {
-	const { pi, ctx, model, userText, assistantText } = args;
+	const { pi, ctx, model, userText, assistantText, promptOverride } = args;
 
 	// Resolve apiKey/headers — ctx.modelRegistry.find() returns the Model
 	// WITHOUT credentials (those live in AuthStorage). Pass via options.
@@ -166,7 +171,7 @@ async function runTitleGen(args: TitleGenArgs): Promise<void> {
 	let title = "";
 	try {
 		const context = {
-			systemPrompt: titleSystemPrompt(),
+			systemPrompt: titleSystemPrompt(promptOverride),
 			messages: [
 				{
 					role: "user" as const,
