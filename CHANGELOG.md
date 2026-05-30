@@ -7,6 +7,9 @@ This extension is **not** published to npm directly; it ships bundled inside the
 
 ## [Unreleased]
 
+### Changed
+- Auto-compact watchdog timeout 60s → 10 min. Compaction summarizes the whole conversation with the active model, so a large context on a reasoning model can legitimately take minutes; the old 60s backstop re-armed mid-summary and risked double-triggering a second compaction.
+
 ## [0.1.1-rc1] — 2026-05-29
 
 Pre-release (release candidate) — ships bundled in hmm-code-vscode 0.1.1-rc1.

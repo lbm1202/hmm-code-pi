@@ -211,6 +211,12 @@ function setupRuntimeHooks(rt: Runtime): void {
 	// (provider error swallowed inside Pi, a queued no-op, etc.), the flag stays
 	// true forever and the turn_end guard below silently disables auto-compact
 	// for the rest of the session — the exact late-trigger we're avoiding.
+	// 10 min: compaction summarizes the whole conversation with the active
+	// model, so a large context on a reasoning model can legitimately take a
+	// few minutes. The watchdog is only a stuck-state backstop, not a timeout
+	// on the compaction itself — it must outlast a slow-but-working compaction
+	// so it doesn't re-arm and double-trigger a second compact mid-summary.
+	const COMPACT_WATCHDOG_MS = 600_000;
 	let compactWatchdog: any;
 	const armCompact = (): void => {
 		state.compactInFlight = true;
@@ -218,10 +224,12 @@ function setupRuntimeHooks(rt: Runtime): void {
 		compactWatchdog = setTimeout(() => {
 			compactWatchdog = undefined;
 			if (state.compactInFlight) {
-				console.error("[modes:hooks] compact watchdog: no completion in 60s — re-arming auto-compact");
+				console.error(
+					"[modes:hooks] compact watchdog: no completion in 10 min — re-arming auto-compact",
+				);
 				state.compactInFlight = false;
 			}
-		}, 60_000);
+		}, COMPACT_WATCHDOG_MS);
 		compactWatchdog?.unref?.();
 	};
 	const disarmCompact = (): void => {
