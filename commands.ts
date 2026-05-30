@@ -99,6 +99,37 @@ export function registerCommands(rt: Runtime): void {
 		description: "Toggle thinking (binary for Qwen-style, cycle for others)",
 		handler: async (_args, ctx) => thinkingToggleHandler(rt, ctx),
 	});
+
+	// Manual compaction. Overrides Pi's built-in /compact so the TUI and the
+	// VS Code button (which dispatches "/compact") share one path with feedback.
+	// The actual compaction is the same ctx.compact() the auto-compact hook
+	// uses, so the watchdog + footer refresh in hooks.ts apply here too.
+	pi.registerCommand("compact", {
+		description: "Manually compact the session context now",
+		handler: async (_args, ctx) => compactHandler(rt, ctx),
+	});
+}
+
+/** Shared by the /compact slash and the VS Code compact button. */
+export async function compactHandler(rt: Runtime, ctx: ExtensionContext): Promise<void> {
+	const { state } = rt;
+	if (state.compactInFlight) {
+		ctx.ui.notify("Compaction already in progress.", "info");
+		return;
+	}
+	ctx.ui.notify("Compacting context…", "info");
+	try {
+		(ctx as any).compact?.({
+			onComplete: () => {
+				ctx.ui.notify("Context compacted.", "info");
+				rt.invalidateFooter?.();
+				rt.requestRender();
+			},
+			onError: (err: unknown) => ctx.ui.notify(`Compaction failed: ${err}`, "warning"),
+		});
+	} catch (err) {
+		ctx.ui.notify(`Compaction failed: ${err}`, "warning");
+	}
 }
 
 /** Shared by /thinking-toggle slash and Alt+T shortcut (shortcuts.ts).
