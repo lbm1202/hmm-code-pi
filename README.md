@@ -11,6 +11,8 @@ Four explicit modes — `plan` / `code` / `debug` / `ask` — with independent m
 [![Pi-coding-agent](https://img.shields.io/badge/Pi-0.77.x-purple.svg)](https://github.com/badlogic/pi-mono)
 [![Bundled in](https://img.shields.io/badge/bundled%20in-hmm--code--vscode-blue.svg)](https://github.com/lbm1202/hmm-code-vscode)
 
+**English** · [한국어](README.ko.md)
+
 [Install](#install-standalone) · [Modes](#modes) · [Slash commands](#slash-commands) · [Docs](#docs)
 
 </div>
@@ -35,7 +37,7 @@ Four explicit modes — `plan` / `code` / `debug` / `ask` — with independent m
 | 📚 **AGENTS.md injection** | `${cwd}/AGENTS.md` + `~/.pi/agent/AGENTS.md` auto-appended to the system prompt |
 | 🩹 **Tool-call name sanitizer** | Repairs mangled tool names from local models (Qwen vLLM, etc.) — prevents codex hard-stuck |
 | ✨ **Auto-titles** | First message pair → GPT-mini → session title (fire-and-forget) |
-| 📦 **Auto-compact** | Triggers at 75% context window usage |
+| 📦 **Dynamic compaction** | Summarizes context at the turn boundary (not mid-loop) once usage passes the threshold (default 75%, `modes.json:autoCompactThreshold`, range 50–85); `dynamicCompaction` toggles it. Manual `/compact`. |
 
 ---
 
@@ -95,6 +97,7 @@ Workflow diagram + handoff details: [docs/WORKFLOW.md](docs/WORKFLOW.md).
 | `/auto-approve [on\|off]` | Session-scoped bypass for permission `ask` (same as `Ctrl+Shift+A`) |
 | `/thinking-toggle` | Toggle thinking level (binary for Qwen-style, cycle otherwise) — same as `Alt+T` |
 | `/reload-runtime` | Reload extensions / settings / models (RPC-safe replacement for Pi's built-in `/reload`) |
+| `/compact` | Manually compact the session context now (shared by the VS Code compact button) |
 
 ---
 
@@ -122,7 +125,6 @@ Workflow diagram + handoff details: [docs/WORKFLOW.md](docs/WORKFLOW.md).
 | [docs/WORKFLOW.md](docs/WORKFLOW.md) | Mode transitions, `finalize_plan`, deferred dispatch, session lifecycle |
 | [docs/PERMISSIONS.md](docs/PERMISSIONS.md) | Permission system end-to-end — rules, builtins, user config, examples |
 | [docs/AGENTS-MD.md](docs/AGENTS-MD.md) | AGENTS.md auto-injection mechanism |
-| [docs/ANALYSIS.md](docs/ANALYSIS.md) | File-by-file architecture deep-dive |
 | [CHANGELOG.md](CHANGELOG.md) | Release notes |
 
 ---
@@ -131,7 +133,7 @@ Workflow diagram + handoff details: [docs/WORKFLOW.md](docs/WORKFLOW.md).
 
 | Path | Contents |
 |---|---|
-| `~/.pi/agent/modes.json` | Per-mode model / thinking / activeTools / systemPromptAddendum / temperature / chatTemplate, modelAliases, autoTitle model, modelAllowlist, **permissions** |
+| `~/.pi/agent/modes.json` | Per-mode model / thinking / activeTools / systemPromptAddendum / temperature / chatTemplate, modelAliases, autoTitle (model) + autoTitlePrompt, autoCompactThreshold + dynamicCompaction + compactModel + compactInstructions, modelAllowlist, **permissions** |
 | `${cwd}/.pi/permissions.json` | Project-level permission overrides (overrides the global rules) |
 | `${cwd}/.piignore` | gitignore-style hard block (denied for every tool) |
 | `${cwd}/AGENTS.md` | Project context (auto-injected into the system prompt) |

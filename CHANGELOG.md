@@ -7,6 +7,10 @@ This extension is **not** published to npm directly; it ships bundled inside the
 
 ## [Unreleased]
 
+## [0.1.1-rc2] — 2026-05-30
+
+Pre-release (release candidate) — ships bundled in hmm-code-vscode 0.1.1-rc2. Stable remains 0.1.0.
+
 ### Added
 - `modes.json:autoTitlePrompt` — optional full override of the auto-title system prompt (non-empty replaces the built-in language-aware default).
 - `modes.json:compactInstructions` — optional extra focus appended to the compaction prompt as "Additional focus: …" (passed as `customInstructions`; Pi's base summary prompt is unchanged). Both editable from the VS Code settings panel's new Prompts tab.
@@ -18,6 +22,8 @@ This extension is **not** published to npm directly; it ships bundled inside the
 - Auto-compact watchdog timeout 60s → 10 min. Compaction summarizes the whole conversation with the active model, so a large context on a reasoning model can legitimately take minutes; the old 60s backstop re-armed mid-summary and risked double-triggering a second compaction.
 - Auto-title no longer fires on a turn that's also compacting (compaction in flight, or context ≥ the auto-compact threshold) — it was sending a second request to the (often local) session model alongside the compaction summary.
 - Auto-title language follows the VS Code `hmm-code.language` setting (passed in as `HMM_CODE_LANG`); the standalone TUI still matches the conversation language.
+- `modes.json:autoCompactThreshold` clamp tightened from `[40, 95]` to `[50, 85]` so the dynamic-compaction grace band (threshold + 15%) stays under 100.
+- Internal: deduped the `mode-state` session-entry type into `constants.ts:MODE_STATE_ENTRY` and extracted the repeated ask-user option-label parsing into a `stripOptionLabel()` helper.
 
 ## [0.1.1-rc1] — 2026-05-29
 
