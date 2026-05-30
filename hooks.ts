@@ -2,13 +2,14 @@
 // session_start (header/footer/editor setup + initial mode apply), token/state
 // invalidation, auto-compact at the threshold, and deferred plan dispatch.
 
-import { CustomEditor, compact as runCompaction } from "@earendil-works/pi-coding-agent";
+import { CustomEditor } from "@earendil-works/pi-coding-agent";
 import { existsSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { loadModes, MODE_NAMES, type ModeName } from "./config";
 import { writeExampleConfigIfMissing, ensureKeybindingsOverride, ensureQuietStartup } from "./config-io";
-import { COMPACT_HARDCAP_MAX, DYNAMIC_COMPACT_GAP, STATUS_KEYS } from "./constants";
+import { STATUS_KEYS } from "./constants";
+import { createCompaction, readPct } from "./compaction";
 import { abbreviateCwd, ansi24, buildBannerLines, fmtTokens } from "./ui";
 import { modeColor } from "./state";
 import type { Runtime } from "./runtime";
@@ -206,99 +207,10 @@ function setupHeaderFooter(rt: Runtime, ctx: any): void {
 function setupRuntimeHooks(rt: Runtime): void {
 	const { pi, state } = rt;
 
-	// Compact-in-flight tracking with a watchdog. Without the watchdog, if
-	// compact() returns but neither onComplete nor session_compact ever fires
-	// (provider error swallowed inside Pi, a queued no-op, etc.), the flag stays
-	// true forever and the turn_end guard below silently disables auto-compact
-	// for the rest of the session — the exact late-trigger we're avoiding.
-	// 10 min: compaction summarizes the whole conversation with the active
-	// model, so a large context on a reasoning model can legitimately take a
-	// few minutes. The watchdog is only a stuck-state backstop, not a timeout
-	// on the compaction itself — it must outlast a slow-but-working compaction
-	// so it doesn't re-arm and double-trigger a second compact mid-summary.
-	const COMPACT_WATCHDOG_MS = 600_000;
-	let compactWatchdog: any;
-	const armCompact = (): void => {
-		state.compactInFlight = true;
-		if (compactWatchdog) clearTimeout(compactWatchdog);
-		compactWatchdog = setTimeout(() => {
-			compactWatchdog = undefined;
-			if (state.compactInFlight) {
-				console.error(
-					"[modes:hooks] compact watchdog: no completion in 10 min — re-arming auto-compact",
-				);
-				state.compactInFlight = false;
-			}
-		}, COMPACT_WATCHDOG_MS);
-		compactWatchdog?.unref?.();
-	};
-	const disarmCompact = (): void => {
-		if (compactWatchdog) {
-			clearTimeout(compactWatchdog);
-			compactWatchdog = undefined;
-		}
-		state.compactInFlight = false;
-	};
-
-	// Mid-loop force-compact / Pi-built-in passthrough point: threshold + grace
-	// band, capped so a little headroom stays below the real window (a genuine
-	// overflow reads ~100% and must fall through to a compaction).
-	const hardCap = (): number =>
-		Math.min(state.autoCompactThreshold + DYNAMIC_COMPACT_GAP, COMPACT_HARDCAP_MAX);
-
-	const readPct = (ctx: any): number | undefined => {
-		try {
-			const pct = ctx?.getContextUsage?.()?.percent;
-			return typeof pct === "number" ? pct : undefined;
-		} catch (err) {
-			console.error("[modes:hooks] getContextUsage failed:", err);
-			return undefined;
-		}
-	};
-
-	// Run OUR compaction. Sets compactRequestedByUs so session_before_compact
-	// lets it through (vs Pi's built-in auto trigger, which we suppress).
-	const triggerCompact = (ctx: any, pct: number): void => {
-		if (state.compactInFlight) return;
-		armCompact();
-		state.compactRequestedByUs = true;
-		ctx.ui.notify(
-			`Auto-compacting at ${pct.toFixed(1)}% (threshold ${state.autoCompactThreshold}%)…`,
-			"info",
-		);
-		try {
-			ctx.compact?.({
-				customInstructions: state.compactInstructionsOverride,
-				onComplete: () => {
-					disarmCompact();
-					rt.invalidateFooter?.();
-					rt.requestRender();
-				},
-				onError: (err: unknown) => {
-					disarmCompact();
-					state.compactRequestedByUs = false;
-					ctx.ui.notify(`Auto-compact failed: ${err}`, "warning");
-				},
-			});
-		} catch (err) {
-			console.error("[modes:hooks] auto-compact call failed:", err);
-			ctx.ui.notify(`Auto-compact failed: ${err}`, "warning");
-			disarmCompact();
-			state.compactRequestedByUs = false;
-		}
-	};
-
-	// Compaction policy. `boundary` = the full user↔AI turn just ended
-	// (agent_end). Mid-loop rounds (turn_end) pass boundary=false.
-	//   dynamic on : compact only at the boundary, OR mid-loop past the hard cap.
-	//   dynamic off: compact the moment usage crosses the threshold (legacy cut).
-	const evalCompaction = (ctx: any, boundary: boolean): void => {
-		if (state.compactInFlight) return;
-		const pct = readPct(ctx);
-		if (pct === undefined || pct < state.autoCompactThreshold) return;
-		const trigger = state.dynamicCompaction ? boundary || pct >= hardCap() : true;
-		if (trigger) triggerCompact(ctx, pct);
-	};
+	// Context-compaction policy (watchdog, dynamic-vs-legacy, suppress Pi's
+	// built-in). turn_end/agent_end below drive it via compaction.evalCompaction.
+	const compaction = createCompaction(rt);
+	compaction.register();
 
 	// Model swaps from /model, /preset, etc. → refresh footer + status.
 	pi.on("model_select", async (event: any, ctxMs: any) => {
@@ -381,54 +293,6 @@ function setupRuntimeHooks(rt: Runtime): void {
 		if (sanitized) return { message: event.message };
 	});
 
-	// All compaction funnels through here (our triggerCompact, the /compact
-	// command, AND Pi's built-in auto trigger). We own the policy via
-	// turn_end/agent_end, so suppress Pi's built-in: it fires at its
-	// reserveTokens point (~50% on small windows, ~92% on large) and would
-	// otherwise cut the agent's turn mid-loop regardless of our threshold.
-	// Cancel it unless usage is at/over the hard cap (near overflow — let it
-	// through so a genuine overflow still recovers). When the trigger IS ours,
-	// optionally swap in the dedicated compaction model (modes.json:compactModel).
-	pi.on("session_before_compact", async (event: any, ctx: any) => {
-		const ours = state.compactRequestedByUs;
-		state.compactRequestedByUs = false;
-		if (!ours) {
-			const pct = readPct(ctx);
-			if (pct !== undefined && pct < hardCap()) {
-				return { cancel: true };
-			}
-			// Near overflow (or pct unknown) → let Pi's compaction proceed.
-			armCompact();
-		}
-		const ref = state.compactModelOverride;
-		if (!ref?.provider || !ref?.id) return; // no override → Pi uses active model
-		try {
-			const model = ctx.modelRegistry?.find?.(ref.provider, ref.id);
-			if (!model) return;
-			const auth = await ctx.modelRegistry?.getApiKeyAndHeaders?.(model);
-			if (!auth?.ok) return;
-			const result = await runCompaction(
-				event.preparation,
-				model,
-				auth.apiKey,
-				auth.headers,
-				event.customInstructions,
-				event.signal,
-				"off",
-				undefined,
-			);
-			return { compaction: result };
-		} catch (err) {
-			// Fall back to Pi's default (active-model) compaction on any failure.
-			console.error("[modes:hooks] compactModel summary failed — using active model:", err);
-		}
-	});
-	pi.on("session_compact", async () => {
-		disarmCompact();
-		rt.invalidateFooter?.();
-		rt.requestRender();
-	});
-
 	// turn_end fires after EACH tool round (mid-loop), not just at the end of
 	// the user↔AI exchange. Push the context status here, then run compaction
 	// policy as a mid-loop round (boundary=false) — dynamic mode preserves the
@@ -442,7 +306,7 @@ function setupRuntimeHooks(rt: Runtime): void {
 				console.error("[modes:hooks] turn_end setStatus failed:", err);
 			}
 		}
-		evalCompaction(ctx2, false);
+		compaction.evalCompaction(ctx2, false);
 	});
 
 	// Deferred message dispatch (current-session plan handoff + mode-switch
@@ -470,7 +334,7 @@ function setupRuntimeHooks(rt: Runtime): void {
 		// True end of the user↔AI exchange. In dynamic mode this is where a
 		// preserved turn finally compacts (boundary=true); legacy mode already
 		// compacted at the round that crossed the threshold.
-		if (ctxAe) evalCompaction(ctxAe, true);
+		if (ctxAe) compaction.evalCompaction(ctxAe, true);
 	});
 }
 
