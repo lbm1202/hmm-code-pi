@@ -37,19 +37,31 @@ export function extractPaths(toolName: string, input: any): ToolPaths {
 			const p = asString(input?.path ?? input?.file_path);
 			return { paths: p ? [p] : [] };
 		}
-		case "multi_edit": {
+		case "multi_edit":
 			// Pi's multi_edit and similar batch tools — collect every per-edit path.
-			const arr = Array.isArray(input?.edits) ? input.edits : [];
-			const set = new Set<string>();
-			const root = asString(input?.path ?? input?.file_path);
-			if (root) set.add(root);
-			for (const e of arr) {
-				const p = asString(e?.path ?? e?.file_path);
-				if (p) set.add(p);
-			}
-			return { paths: [...set] };
-		}
+			return { paths: pathsFromShape(input) };
 		default:
-			return { paths: [] };
+			// Fail closed: an unrecognized tool name (e.g. Pi renames `edit` to
+			// `edit_file`) must NOT silently yield zero paths — the evaluator
+			// treats empty paths as `allow`, skipping the external_directory gate
+			// entirely. Extract from the standard arg shape regardless of name so
+			// a renamed file-touching tool still reaches the path layer. Tools
+			// that genuinely touch no files have no path/file_path/edits field
+			// and correctly return [].
+			return { paths: pathsFromShape(input) };
 	}
+}
+
+/** Collect every path from the conventional arg shape: `path` / `file_path` at
+ *  the top level plus per-entry paths in an `edits` array. */
+function pathsFromShape(input: any): string[] {
+	const set = new Set<string>();
+	const root = asString(input?.path ?? input?.file_path);
+	if (root) set.add(root);
+	const edits = Array.isArray(input?.edits) ? input.edits : [];
+	for (const e of edits) {
+		const p = asString(e?.path ?? e?.file_path);
+		if (p) set.add(p);
+	}
+	return [...set];
 }

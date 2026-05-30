@@ -144,6 +144,26 @@ export const DEFAULT_MODES: Record<ModeName, ModeConfig> = {
 	},
 };
 
+/** Coerce an untrusted modes.json value to a {provider, id} ModelRef, or
+ *  undefined — so a malformed `autoTitle`/`compactModel` (string, partial
+ *  object, etc.) degrades to "use the default" instead of propagating garbage. */
+function validModelRef(v: unknown): ModelRef | undefined {
+	if (v && typeof v === "object") {
+		const r = v as { provider?: unknown; id?: unknown };
+		if (typeof r.provider === "string" && typeof r.id === "string") {
+			return { provider: r.provider, id: r.id };
+		}
+	}
+	return undefined;
+}
+
+/** Coerce to a plain object map, or {} — guards the map-shaped fields
+ *  (modelAliases / modelAllowlist) so downstream Object.entries can't throw on
+ *  a non-object value. */
+function asRecord<T>(v: unknown): Record<string, T> {
+	return v && typeof v === "object" && !Array.isArray(v) ? (v as Record<string, T>) : {};
+}
+
 export function loadModes(_cwd: string): ModesFile {
 	const fallback: ModesFile = { defaultMode: "code", modes: { ...DEFAULT_MODES } };
 
@@ -174,8 +194,8 @@ export function loadModes(_cwd: string): ModesFile {
 	return {
 		defaultMode,
 		modes: merged,
-		modelAliases: raw.modelAliases ?? {},
-		autoTitle: raw.autoTitle,
+		modelAliases: asRecord<string>(raw.modelAliases),
+		autoTitle: validModelRef(raw.autoTitle),
 		autoTitlePrompt:
 			typeof raw.autoTitlePrompt === "string" && raw.autoTitlePrompt.trim()
 				? raw.autoTitlePrompt
@@ -184,8 +204,8 @@ export function loadModes(_cwd: string): ModesFile {
 			typeof raw.compactInstructions === "string" && raw.compactInstructions.trim()
 				? raw.compactInstructions
 				: undefined,
-		compactModel: raw.compactModel,
-		modelAllowlist: raw.modelAllowlist ?? {},
+		compactModel: validModelRef(raw.compactModel),
+		modelAllowlist: asRecord<string[]>(raw.modelAllowlist),
 		permissions: raw.permissions,
 		autoCompactThreshold,
 		dynamicCompaction:

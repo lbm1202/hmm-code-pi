@@ -7,6 +7,13 @@ This extension is **not** published to npm directly; it ships bundled inside the
 
 ## [Unreleased]
 
+### Fixed
+- **Permissions hardening (fail-closed):** an unrecognized or renamed file tool no longer fails open. `extract-paths` now pulls paths from the standard `path`/`file_path`/`edits` arg shape for ANY tool name, so the `external_directory` gate still runs — previously an unknown tool returned zero paths, which the evaluator treats as `allow`.
+- `loadModes` validates the shape of `autoTitle`/`compactModel` (must be `{provider,id}`) and `modelAliases`/`modelAllowlist` (must be objects), degrading malformed `modes.json` values to defaults instead of propagating them downstream.
+
+### Changed
+- Internal: extracted the compaction policy + watchdog state machine out of `hooks.ts` into `compaction.ts` (hooks.ts 525 → 389 lines). Added a `node --test` permission test suite (`extract-paths` / `glob` / `bash-rules`); run with `npm test`.
+
 ## [0.1.1-rc2] — 2026-05-30
 
 Pre-release (release candidate) — ships bundled in hmm-code-vscode 0.1.1-rc2. Stable remains 0.1.0.
