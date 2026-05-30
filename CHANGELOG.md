@@ -13,6 +13,7 @@ This extension is **not** published to npm directly; it ships bundled inside the
 
 ### Changed
 - Internal: extracted the compaction policy + watchdog state machine out of `hooks.ts` into `compaction.ts` (hooks.ts 525 → 389 lines). Added a `node --test` permission test suite (`extract-paths` / `glob` / `bash-rules`); run with `npm test`.
+- Internal: split `ModeState` (state.ts 413 → 319 lines) — the TUI footer box rendering moved to `mode-box.ts` and the active-tool resolution to `mode-tools.ts`, where the "edit/write are code-only" invariant is now unit-tested.
 
 ## [0.1.1-rc2] — 2026-05-30
 

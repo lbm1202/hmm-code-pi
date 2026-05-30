@@ -1,32 +1,12 @@
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { MODE_NAMES, type ModeConfig, type ModeName, type ModesFile } from "./config";
 import { AUTO_COMPACT_THRESHOLD, MODE_STATE_ENTRY, STATUS_KEYS } from "./constants";
-import { ansi24 } from "./ui";
+import { renderModeBox } from "./mode-box";
+import { resolveActiveTools } from "./mode-tools";
 
-const PROTECTED_FROM_NON_CODE: ReadonlySet<string> = new Set(["edit", "write"]);
-const ALWAYS_INJECTED: readonly string[] = ["ask_user", "request_mode_switch"];
-
-const MODE_COLORS: Record<ModeName, [number, number, number]> = {
-	plan: [100, 150, 255], // blue
-	code: [240, 240, 240], // white
-	debug: [180, 120, 220], // purple
-	ask: [255, 165, 80], // orange
-};
-// max name length + 1 → 2 of 4 names get perfect centering (code/plan with len 4),
-// ask/debug end up 1 cell off. Pure-center for all 4 isn't possible with monospace
-// when name lengths have mixed parity.
-const MODE_FIELD_WIDTH = Math.max(...MODE_NAMES.map((n) => n.length)) + 1;
-
-function centerText(text: string, width: number): string {
-	const diff = Math.max(0, width - text.length);
-	const left = Math.floor(diff / 2);
-	const right = diff - left;
-	return " ".repeat(left) + text + " ".repeat(right);
-}
-
-export function modeColor(name: ModeName): [number, number, number] {
-	return MODE_COLORS[name];
-}
+// Footer box rendering + mode colors moved to mode-box.ts; re-export modeColor
+// so existing `import { modeColor } from "./state"` sites (hooks.ts) still work.
+export { modeColor } from "./mode-box";
 
 export class ModeState {
 	current: ModeName = "code";
@@ -192,22 +172,7 @@ export class ModeState {
 	}
 
 	computeActiveTools(name: ModeName, allToolNames: string[]): { tools: string[]; stripped: string[] } {
-		const cfg = this.configFor(name);
-		const requested = cfg.activeTools ?? [];
-		let stripped: string[] = [];
-		let base = requested;
-		if (name !== "code") {
-			stripped = requested.filter((t) => PROTECTED_FROM_NON_CODE.has(t));
-			base = requested.filter((t) => !PROTECTED_FROM_NON_CODE.has(t));
-		}
-		const merged = [...base, ...ALWAYS_INJECTED];
-		if (name === "plan") merged.push("finalize_plan");
-		// Multi-step task list for execution modes (code/debug). Plan and ask
-		// don't need it — plan uses finalize_plan, ask is conversational.
-		if (name === "code" || name === "debug") merged.push("todo_write");
-		const unique = [...new Set(merged)];
-		const tools = unique.filter((t) => allToolNames.includes(t));
-		return { tools, stripped };
+		return resolveActiveTools(name, this.configFor(name).activeTools ?? [], allToolNames);
 	}
 
 	async apply(name: ModeName, ctx: ExtensionContext): Promise<void> {
@@ -304,74 +269,15 @@ export class ModeState {
 	}
 
 	renderBox(width: number, info: string[]): string[] {
-		const rgb = MODE_COLORS[this.current];
-		const white: [number, number, number] = [240, 240, 240];
-
-		// Box 1: open-left mode trough + model cell, optionally + auto-approve
-		// and override hint cells. Colored per mode. Optional cells are dropped
-		// when the terminal is too narrow to fit them alongside box2 (token
-		// info) — essential cells (mode/model/thinking) always render.
-		const centered = centerText(this.current, MODE_FIELD_WIDTH);
-		const modeInner = ` ${centered} `;
-		const modelInner = ` ${this.modelLabel()} `;
-		const thinkingLevel = this.pi.getThinkingLevel();
-		const thinkingInner = ` ${thinkingLevel} `;
-
-		// Pre-build box2 so we know its width when deciding which box1 cells fit.
-		const cells = info.filter((s) => s && s.length > 0).map((s) => ` ${s} `);
-		const buildBox = (innerCells: string[]) => {
-			const dashes = innerCells.map((c) => "─".repeat(c.length));
-			return {
-				top: `┌${dashes.join("┬")}┐`,
-				mid: `│${innerCells.join("│")}│`,
-				bot: `└${dashes.map((d) => d).join("┴")}┘`,
-				width: dashes.reduce((n, d) => n + d.length, 0) + dashes.length + 1,
-			};
-		};
-		let box2: { top: string; mid: string; bot: string; width: number } | undefined;
-		if (cells.length > 0) box2 = buildBox(cells);
-
-		const usable = Math.max(0, width - 1); // -1 for Pi's hardcoded 1-col padding
-		const minGap = 2;
-
-		// Try most-detailed box1, fall back progressively if too wide for box2.
-		const candidates = [
-			[modeInner, modelInner, thinkingInner, this.autoApprove ? " auto-approve " : "", this.isAnyOverridden() ? " Alt+X → default " : ""].filter((c) => c.length > 0),
-			[modeInner, modelInner, thinkingInner, this.autoApprove ? " ✓auto " : "", this.isAnyOverridden() ? " ✱ " : ""].filter((c) => c.length > 0),
-			[modeInner, modelInner, thinkingInner],
-		];
-		let box1Cells = candidates[0];
-		for (const cand of candidates) {
-			const w = cand.reduce((n, c) => n + c.length, 0) + cand.length;
-			if (!box2 || w + box2.width + minGap <= usable) {
-				box1Cells = cand;
-				break;
-			}
-		}
-		const box1Dashes = box1Cells.map((c) => "─".repeat(c.length));
-		const box1Top = `${box1Dashes.join("┬")}┐`;
-		const box1Mid = `${box1Cells.join("│")}│`;
-		const box1Bot = `${box1Dashes.join("┴")}┘`;
-		const box1Width = box1Top.length;
-
-		if (!box2) {
-			return [ansi24(box1Top, rgb), ansi24(box1Mid, rgb), ansi24(box1Bot, rgb)];
-		}
-
-		// If even the minimal box1 + box2 + min gap doesn't fit, drop box2
-		// rather than letting them overlap. Box1 has the essential state.
-		if (box1Width + box2.width + minGap > usable) {
-			return [ansi24(box1Top, rgb), ansi24(box1Mid, rgb), ansi24(box1Bot, rgb)];
-		}
-
-		// Right-align box2: spacer fills the gap between box1 and the right edge.
-		const gap = " ".repeat(Math.max(minGap, usable - box1Width - box2.width));
-
-		return [
-			ansi24(box1Top, rgb) + gap + ansi24(box2.top, white),
-			ansi24(box1Mid, rgb) + gap + ansi24(box2.mid, white),
-			ansi24(box1Bot, rgb) + gap + ansi24(box2.bot, white),
-		];
+		return renderModeBox({
+			mode: this.current,
+			modelLabel: this.modelLabel(),
+			thinkingLevel: this.pi.getThinkingLevel(),
+			autoApprove: this.autoApprove,
+			overridden: this.isAnyOverridden(),
+			width,
+			info,
+		});
 	}
 
 	/** Whether the interactive editor is wired. False in RPC mode before the
