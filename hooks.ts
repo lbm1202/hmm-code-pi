@@ -8,7 +8,7 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 import { loadModes, MODE_NAMES, type ModeName } from "./config";
 import { writeExampleConfigIfMissing, ensureKeybindingsOverride, ensureQuietStartup } from "./config-io";
-import { STATUS_KEYS } from "./constants";
+import { DEFAULT_BASH_TIMEOUT_SEC, STATUS_KEYS } from "./constants";
 import { createCompaction, readPct } from "./compaction";
 import { abbreviateCwd, ansi24, buildBannerLines, fmtTokens } from "./ui";
 import { modeColor } from "./state";
@@ -258,6 +258,21 @@ function setupRuntimeHooks(rt: Runtime): void {
 					if (part?.type !== "toolCall") continue;
 					const name = (part as { name?: unknown }).name;
 					if (typeof name !== "string") continue;
+
+					// Default bash timeout. The bash tool has NO built-in timeout,
+					// so a command the model runs without one — an interactive TUI
+					// app, a server, a `tail -f` — never returns and hangs the turn
+					// forever (the agent waits on a tool result that never comes).
+					// Inject a cap when the model omitted it; an explicit timeout
+					// (including a longer one for slow commands) is left untouched.
+					if (name === "bash") {
+						const args = (part as { arguments?: Record<string, unknown> }).arguments;
+						if (args && typeof args === "object" && args.timeout === undefined) {
+							args.timeout = DEFAULT_BASH_TIMEOUT_SEC;
+							sanitized = true; // persist the mutated message
+						}
+					}
+
 					if (/^[a-zA-Z0-9_-]+$/.test(name)) continue;
 					const snippet = name.replace(/\s+/g, " ").slice(0, 80);
 					console.error(

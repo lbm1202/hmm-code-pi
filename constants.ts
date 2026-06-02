@@ -32,6 +32,13 @@ export const DYNAMIC_COMPACT_GAP = 15;
  * suppressed. hardCap = min(threshold + DYNAMIC_COMPACT_GAP, this). */
 export const COMPACT_HARDCAP_MAX = 95;
 
+/** Default timeout (seconds) injected into bash tool calls that don't specify
+ *  one. The bash tool has NO default timeout, so a non-terminating foreground
+ *  command — an interactive TUI app, a dev server, a watcher — would hang the
+ *  turn forever. 2 minutes is generous for normal dev commands (installs,
+ *  builds, test suites); the model can still pass a longer explicit timeout. */
+export const DEFAULT_BASH_TIMEOUT_SEC = 120;
+
 /** Built-in auto-title system prompt (base, WITHOUT the language line — that's
  *  appended at runtime from HMM_CODE_LANG and is always enforced). Single-line
  *  literal so the VS Code settings panel can parse it as the editable default.

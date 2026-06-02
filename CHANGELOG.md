@@ -7,6 +7,9 @@ This extension is **not** published to npm directly; it ships bundled inside the
 
 ## [Unreleased]
 
+### Added
+- **Default bash timeout (2 min).** The bash tool has no built-in timeout, so a command the model runs without one — an interactive TUI app, a dev server, a `tail -f` — never returns and hangs the turn forever (the agent waits on a tool result that never comes). The `message_end` hook now injects `timeout: 120` into any `bash` tool call that omits it; an explicit timeout (including a longer one for slow commands) is left untouched. The bash tool kills the whole process tree on timeout, so the stuck command — and its children — are cleaned up.
+
 ### Fixed
 - **Permissions hardening (fail-closed):** an unrecognized or renamed file tool no longer fails open. `extract-paths` now pulls paths from the standard `path`/`file_path`/`edits` arg shape for ANY tool name, so the `external_directory` gate still runs — previously an unknown tool returned zero paths, which the evaluator treats as `allow`.
 - `loadModes` validates the shape of `autoTitle`/`compactModel` (must be `{provider,id}`) and `modelAliases`/`modelAllowlist` (must be objects), degrading malformed `modes.json` values to defaults instead of propagating them downstream.
