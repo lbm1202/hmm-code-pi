@@ -21,11 +21,11 @@ export function registerFinalizePlan(pi: ExtensionAPI, state: ModeState) {
 		parameters: Type.Object({
 			summary: Type.String({
 				description:
-					"One- or two-sentence summary of the plan — shown in the picker / dialog preview. Keep it short; depth goes in `body`.",
+					"One or two sentences stating WHAT gets built — declarative (the deliverable, not a reply to the user). Shown in the picker / dialog preview; depth goes in `body`.",
 			}),
 			body: Type.String({
 				description:
-					"Free-form markdown design notes. Use `###` or lower (NEVER `##`) — the template wraps this in a `## Design` section, so `##` would collide with Summary/Steps. Include whatever helps: current state, file structure, data models, strategy, trade-offs, risks. Trivial changes can be 1-3 lines; bigger work should be richer.",
+					"Free-form markdown design notes. Use `###` or lower (NEVER `##`) — the template wraps this in a `## Design` section, so `##` would collide with Summary/Steps. Include current state, file structure, data models, strategy, trade-offs, risks. Pin the contracts at the seams — data shapes shared across components, API/file formats where two pieces must agree, cross-cutting decisions — while leaving internal function signatures to the implementer. Trivial changes can be 1-3 lines; bigger work should be richer.",
 			}),
 			steps: Type.Array(Type.String(), {
 				description: "Ordered concrete steps for the implementing agent to follow.",
