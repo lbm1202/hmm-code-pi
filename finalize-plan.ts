@@ -73,13 +73,18 @@ export function registerFinalizePlan(pi: ExtensionAPI, state: ModeState) {
 
 			if (!ctx.hasUI) {
 				await state.apply(targetMode, ctx);
-				pi.sendUserMessage(planMessageBody(planMarkdown, targetMode), { deliverAs: "followUp" });
+				// Defer to agent_end (same as the CHOICE_CURRENT branch below) so the
+				// implementation turn runs on a FRESH agent loop with the post-apply
+				// (target-mode) model + activeTools. A same-loop deliverAs:"followUp"
+				// reuses the pre-apply plan-mode config, so the turn would run
+				// read-only (no edit/write) right after switching to code/debug.
+				state.pendingCurrentSessionPlanBody = planMessageBody(planMarkdown, targetMode);
 				ctx.ui.notify(`Plan saved → ${planPath} (headless: auto current-session)`, "info");
 				return {
 					content: [
 						{
 							type: "text",
-							text: `Plan saved → ${planPath}. Switched to ${targetMode} (headless fallback).`,
+							text: `Plan saved → ${planPath}. Switched to ${targetMode} (headless); plan dispatch deferred to next turn.`,
 						},
 					],
 					details: { planPath, targetMode, branch: "current_session_headless" },
