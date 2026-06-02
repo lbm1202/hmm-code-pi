@@ -7,6 +7,9 @@ This extension is **not** published to npm directly; it ships bundled inside the
 
 ## [Unreleased]
 
+### Changed
+- Mode prompt refinements for a clearer plan → code handoff. **plan**: `finalize_plan` summary must state WHAT gets built (a declarative deliverable, not a reply to the user), and the body must pin the contracts *at the seams* — data shapes shared across components, API/file formats where two pieces must agree, cross-cutting decisions — while leaving internal function signatures to the implementer. **code**: build incrementally (implement one unit → verify it → next, rather than write-everything-then-validate) and run code / install deps through the project's own isolated environment (venv·uv / local node_modules / Cargo·Bundler / …) rather than the global system.
+
 ### Added
 - **Default bash timeout (2 min).** The bash tool has no built-in timeout, so a command the model runs without one — an interactive TUI app, a dev server, a `tail -f` — never returns and hangs the turn forever (the agent waits on a tool result that never comes). The `message_end` hook now injects `timeout: 120` into any `bash` tool call that omits it; an explicit timeout (including a longer one for slow commands) is left untouched. The bash tool kills the whole process tree on timeout, so the stuck command — and its children — are cleaned up.
 
