@@ -7,6 +7,10 @@ This extension is **not** published to npm directly; it ships bundled inside the
 
 ## [Unreleased]
 
+## [0.1.1] — 2026-06-02
+
+First stable on the 0.1.1 line (supersedes 0.1.1-rc1 / rc2). Ships bundled in hmm-code-vscode 0.1.1.
+
 ### Changed
 - Compaction retuned: auto-compact threshold default 75 → **70**; dynamic-compaction grace band **15% → 10%**; the threshold upper bound is now mode-dependent — **80% with dynamic compaction on** (so threshold + gap stays ≤ 90), **90% with it off** (compaction happens at the threshold, no grace band). Compacting near 100% never made sense.
 - **`debug → code` direct path** (loosens the plan→code invariant for one case). `request_mode_switch("code")` was hard-blocked from every mode — a localized fix discovered in debug had to round-trip through plan + finalize_plan. It's now allowed **from `debug`** (still blocked from `plan`/`ask`): when diagnosis pins a localized, already-specified fix, debug switches straight to code carrying the diagnosis as the spec. Fixes needing redesign / seam decisions still go to plan. The debug prompt also now knows it may receive a *list* of blockers (from code's end-of-build batch) and triages them. Docs (README, WORKFLOW) updated.
@@ -91,5 +95,6 @@ Captures the project state at the time of the first hmm-code VS Code release.
 - `.piignore` ignored absolute-path tool inputs (normalized to cwd-relative now).
 - `auto-title` `setSessionName` no longer throws when the session ended before the async LLM call resolved (try/catch).
 
-[Unreleased]: https://github.com/lbm1202/hmm-code-pi/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/lbm1202/hmm-code-pi/compare/v0.1.1...HEAD
+[0.1.1]: https://github.com/lbm1202/hmm-code-pi/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/lbm1202/hmm-code-pi/tree/main
