@@ -21,7 +21,7 @@ Four explicit modes — `plan` / `code` / `debug` / `ask` — with independent m
 
 > **VS Code users**: don't install this directly. The companion [hmm-code-vscode](https://github.com/lbm1202/hmm-code-vscode) extension bundles it inside the `.vsix` and loads it via the `-e` flag — you get it for free. Install standalone only if you drive Hmm-code from the Pi TUI, or you're developing this extension.
 
-**Core invariant**: every code-modifying path must go `plan → code`. The other modes (`debug` / `ask`) only enrich the context that feeds into `plan`.
+**Core invariant**: code edits happen only in `code` mode, entered via `plan → code` (`finalize_plan`) — with one exception: a localized, already-diagnosed fix may switch `debug → code` directly (the diagnosis is its spec). `debug` / `ask` otherwise only enrich the context that feeds into `plan`.
 
 ---
 
@@ -147,8 +147,8 @@ Workflow diagram + handoff details: [docs/WORKFLOW.md](docs/WORKFLOW.md).
 ## Core invariants
 
 1. **`edit` / `write` are code-only.** Auto-stripped from `plan` / `debug` / `ask` `activeTools` (`state.ts:PROTECTED_FROM_NON_CODE`).
-2. **`finalize_plan` is plan-only.** The sole explicit entry to code mode.
-3. **`request_mode_switch("code")` is blocked.** Code mode is reached only via `finalize_plan`.
+2. **`finalize_plan` is plan-only.** The primary entry to code mode (`plan → code`).
+3. **`request_mode_switch("code")` is blocked except from `debug`.** A diagnosed localized fix may switch `debug → code` directly (the diagnosis is the spec); from `plan` / `ask` it's still blocked — use `finalize_plan`.
 4. **External paths still hit the permission layer.** `~/.ssh`, `/etc`, etc. need `ask` or `deny` per `external_directory` rules.
 
 ---

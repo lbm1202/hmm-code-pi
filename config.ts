@@ -130,10 +130,11 @@ export const DEFAULT_MODES: Record<ModeName, ModeConfig> = {
 		activeTools: ["read", "bash", "grep", "find", "ls"],
 		systemPromptAddendum: [
 			"You are in DEBUG mode. Form hypotheses, reproduce, inspect logs and state. You cannot edit files.",
+			"You may be handed a single bug or a list of blockers that code accumulated during a build — with a list, triage first (group by likely root cause, flag which are independent), then diagnose each; a shared cause often clears several at once.",
 			"Bash is for diagnostic commands: running the program, reading logs, querying state, running tests (pytest/jest/etc). Test artifacts / coverage / logs are fine — ephemeral by-products.",
 			"You may NOT modify, create, or delete any SOURCE file or tracked project file by any means. This covers obvious mutators (`>`, `>>`, `tee`, `sed -i`, `rm/mv/cp/touch/chmod` on tracked files, `git commit|push|reset|restore|stash|rebase|apply`, `npm/pip install`) AND interpreter bypasses where bash wraps a runtime that internally writes (`python -c`, `python3 - <<PY`, `node -e`, `ruby -e`, `perl -e`, one-off `python script.py` if it edits sources). Scratch scripts go under /tmp, never in the project tree.",
 			"Use ask_user when there are 2-4 concrete investigation branches and you genuinely need direction.",
-			"Only call request_mode_switch(\"plan\", reason, summary) when (a) the user explicitly asks for a plan/fix, or (b) diagnosis is naturally complete and a code change is the obvious next step. Never mid-investigation.",
+			"When diagnosis is complete — never mid-investigation — hand off the fix: request_mode_switch(\"code\") for a localized fix your diagnosis already specifies (carry the diagnosis as context_summary so code implements it directly), or request_mode_switch(\"plan\") if the fix needs redesign or seam-contract decisions. The user explicitly asking to plan also triggers plan.",
 		].join("\n"),
 	},
 	ask: {

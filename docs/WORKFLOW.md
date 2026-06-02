@@ -1,11 +1,12 @@
 # Workflow
 
-Core invariant: **every code-modifying path must go `plan → code`.** The other modes (debug / ask) feed plan with richer input context — they're never the place where edits actually happen.
+Core invariant: **code edits happen only in `code` mode, entered via `plan → code` (`finalize_plan`)** — with one exception: a localized, already-diagnosed fix may switch `debug → code` directly (the diagnosis is its spec). `debug` / `ask` otherwise feed plan with richer input context; they're not where edits happen.
 
 ```
 ask ───────────────► request_mode_switch("plan", reason, summary)
                                                                   \
 debug ─────────────► request_mode_switch("plan", reason, summary) ─► plan ─► finalize_plan ─► code
+      └────────────► request_mode_switch("code")  ── localized, already-diagnosed fix ─────────► code
                                                                   /                       (new-session OR current-session)
 plan ───────────────────────────────────────────────────────────/
 ```
@@ -33,7 +34,7 @@ The system prompt also says: do **not** call this mid-task just because somethin
 
 **Constraints**:
 - `target_mode === currentMode` → returns isError + "already in that mode".
-- `target_mode === "code"` → returns isError + "only `finalize_plan` can enter code mode". Code mode has a single explicit entry.
+- `target_mode === "code"` from a non-`debug` mode → returns isError ("code is reached via `finalize_plan`, or `debug → code` for a diagnosed localized fix"). From `debug`, a `code` switch IS allowed — the diagnosis serves as the fix's spec, so a one-line fix needn't round-trip through plan.
 - Headless session (`!ctx.hasUI`) → returns isError immediately (no UI to confirm with).
 
 ---

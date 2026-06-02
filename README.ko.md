@@ -21,7 +21,7 @@
 
 > **VS Code 사용자**: 이걸 직접 설치하지 마세요. 동반 확장 [hmm-code-vscode](https://github.com/lbm1202/hmm-code-vscode)가 `.vsix` 안에 동봉해 `-e` 플래그로 로드합니다 — 그냥 따라옵니다. Pi TUI에서 Hmm-code를 직접 구동하거나 이 확장을 개발할 때만 독립 설치하세요.
 
-**핵심 불변식**: 코드를 수정하는 모든 경로는 반드시 `plan → code` 를 거칩니다. 나머지 모드(`debug` / `ask`)는 `plan`에 들어가는 컨텍스트를 풍부하게 할 뿐입니다.
+**핵심 불변식**: 코드 수정은 오직 `code` 모드에서만 일어나며, `plan → code`(`finalize_plan`)로 진입합니다 — 단 하나의 예외: 국소적이고 이미 진단이 끝난 수정은 `debug → code`로 바로 전환할 수 있습니다(진단이 곧 그 수정의 명세). `debug` / `ask`는 그 외엔 `plan`에 들어가는 컨텍스트를 풍부하게 할 뿐입니다.
 
 ---
 
@@ -147,8 +147,8 @@ pi install ./path/to/hmm-code-pi
 ## 핵심 불변식
 
 1. **`edit` / `write` 는 code 전용.** `plan` / `debug` / `ask` 의 `activeTools` 에서 자동 제거 (`state.ts:PROTECTED_FROM_NON_CODE`).
-2. **`finalize_plan` 은 plan 전용.** code 모드로 가는 유일한 명시적 진입점.
-3. **`request_mode_switch("code")` 는 차단됨.** code 모드는 오직 `finalize_plan` 으로만 도달.
+2. **`finalize_plan` 은 plan 전용.** code 모드의 주 진입점(`plan → code`).
+3. **`request_mode_switch("code")` 는 `debug` 외엔 차단됨.** 진단이 끝난 국소 수정은 `debug → code`로 직행 가능(진단이 명세); `plan` / `ask`에선 여전히 차단 — `finalize_plan` 사용.
 4. **외부 경로는 여전히 권한 레이어를 거침.** `~/.ssh`, `/etc` 등은 `external_directory` 규칙에 따라 `ask` 또는 `deny`.
 
 ---

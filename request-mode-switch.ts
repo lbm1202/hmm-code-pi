@@ -31,12 +31,16 @@ export function registerRequestModeSwitch(pi: ExtensionAPI, state: ModeState) {
 				};
 			}
 
-			if (target === "code") {
+			// Code is normally entered only via finalize_plan (the plan→code
+			// invariant). Exception: a localized, already-diagnosed fix may switch
+			// debug→code directly — the diagnosis is its spec, so routing a one-line
+			// fix through a full plan round is wasted ceremony.
+			if (target === "code" && state.current !== "debug") {
 				return {
 					content: [
 						{
 							type: "text",
-							text: "Cannot enter code mode via request_mode_switch. Switch to plan and call finalize_plan instead.",
+							text: "Cannot enter code mode from here. Code is reached via finalize_plan (from plan), or directly from debug for a localized, already-diagnosed fix. Switch to plan and call finalize_plan instead.",
 						},
 					],
 					isError: true,

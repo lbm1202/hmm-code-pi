@@ -8,6 +8,7 @@ This extension is **not** published to npm directly; it ships bundled inside the
 ## [Unreleased]
 
 ### Changed
+- **`debug → code` direct path** (loosens the plan→code invariant for one case). `request_mode_switch("code")` was hard-blocked from every mode — a localized fix discovered in debug had to round-trip through plan + finalize_plan. It's now allowed **from `debug`** (still blocked from `plan`/`ask`): when diagnosis pins a localized, already-specified fix, debug switches straight to code carrying the diagnosis as the spec. Fixes needing redesign / seam decisions still go to plan. The debug prompt also now knows it may receive a *list* of blockers (from code's end-of-build batch) and triages them. Docs (README, WORKFLOW) updated.
 - Mode prompt refinements for a clearer plan → code handoff. **plan**: `finalize_plan` summary must state WHAT gets built (a declarative deliverable, not a reply to the user), and the body must pin the contracts *at the seams* — data shapes shared across components, API/file formats where two pieces must agree, cross-cutting decisions — while leaving internal function signatures to the implementer. **code**: build incrementally (implement one unit → verify it → next, rather than write-everything-then-validate) and run code / install deps through the project's own isolated environment (venv·uv / local node_modules / Cargo·Bundler / …) rather than the global system.
 
 ### Added
