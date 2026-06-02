@@ -204,7 +204,23 @@ function setupHeaderFooter(rt: Runtime, ctx: any): void {
 	};
 }
 
+/** Guards setupRuntimeHooks so its pi.on registrations run exactly once per
+ *  process. setupRuntimeHooks is invoked from the session_start handler (it sits
+ *  next to the per-session header/footer/editor wiring), so without this it
+ *  re-registers model_select / message_end / turn_end / agent_end / compaction on
+ *  EVERY session_start — boot + auto-resume + each picker switch — stacking
+ *  duplicate handlers on the runner. The duplicate session_before_compact handler
+ *  is what made auto-compaction cancel itself (the first consumed compactRequested
+ *  ByUs, the second saw "not ours" and returned {cancel}). These handlers read the
+ *  live session via the EVENT ctx and the shared ModeState (rt is the same boot
+ *  instance every session_start), so wiring them once is correct. On /reload the
+ *  whole module is re-evaluated (jiti moduleCache:false), resetting this flag so
+ *  the hooks re-bind onto the fresh runner. */
+let runtimeHooksWired = false;
+
 function setupRuntimeHooks(rt: Runtime): void {
+	if (runtimeHooksWired) return;
+	runtimeHooksWired = true;
 	const { pi, state } = rt;
 
 	// Context-compaction policy (watchdog, dynamic-vs-legacy, suppress Pi's

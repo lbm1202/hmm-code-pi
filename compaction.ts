@@ -113,14 +113,35 @@ export function createCompaction(rt: Runtime): Compaction {
 
 	const register = (): void => {
 		// All compaction funnels through here (our triggerCompact, the /compact
-		// command, AND Pi's built-in auto trigger). We own the policy via
-		// turn_end/agent_end, so suppress Pi's built-in: it fires at its
-		// reserveTokens point (~50% on small windows, ~92% on large) and would
-		// otherwise cut the agent's turn mid-loop regardless of our threshold.
-		// Cancel it unless usage is at/over the hard cap (near overflow — let it
-		// through so a genuine overflow still recovers). When the trigger IS ours,
-		// optionally swap in the dedicated model (modes.json:compactModel).
+		// command, AND — in theory — Pi's built-in auto trigger). We own the policy
+		// via turn_end/agent_end, so the host disables Pi's built-in via RPC
+		// set_auto_compaction:false at spawn AND after every session switch (each
+		// new/switched AgentSession re-defaults it to enabled) — see
+		// chat-backend.ts:disableBuiltinAutoCompaction. This hook stays as a
+		// fallback for the brief window before that disable lands (and for a genuine
+		// context overflow, which Pi may still surface): if a non-ours compaction
+		// sneaks in below the hard cap, cancel it; near overflow (or pct unknown)
+		// let it through so a real overflow still recovers. When the trigger IS
+		// ours, optionally swap in the dedicated model (modes.json:compactModel).
 		pi.on("session_before_compact", async (event: any, ctx: any) => {
+			// DEDUP (defense-in-depth). The root cause of duplicate handlers — this
+			// hook being re-registered on every session_start — is fixed in
+			// hooks.ts (setupRuntimeHooks runs once per process now). This guard
+			// stays as cheap insurance: if our handler is ever wired more than once
+			// again, a SINGLE compaction would fire all of them — the first reads
+			// compactRequestedByUs=true and runs the compactModel summary (seconds),
+			// then a duplicate sees the consumed flag (ours=false) and returns
+			// {cancel}, aborting our own in-flight compaction ("Compaction
+			// cancelled"). Keyed on the per-compaction AbortSignal: only the first
+			// invocation for a given signal does the work; later duplicates no-op.
+			// WeakSet on globalThis so it holds even across module re-evaluation.
+			const g = globalThis as any;
+			const seen: WeakSet<object> = (g.__hmmCompactSeen ??= new WeakSet());
+			const sig = event?.signal;
+			if (sig) {
+				if (seen.has(sig)) return; // duplicate handler — first invocation owns it
+				seen.add(sig);
+			}
 			const ours = state.compactRequestedByUs;
 			state.compactRequestedByUs = false;
 			if (!ours) {
