@@ -17,14 +17,16 @@ export const STATUS_KEYS = {
 
 /** Auto-compact triggers at this context-usage percent. Pi's built-in
  * reserveTokens trigger is ~94% on large windows — too late for comfort. */
-export const AUTO_COMPACT_THRESHOLD = 75;
+export const AUTO_COMPACT_THRESHOLD = 70;
 
 /** Dynamic-compaction grace band. In dynamic mode the agent's multi-step turn
  * is NOT cut at the threshold; compaction waits for the turn boundary
  * (agent_end). The only mid-loop force-compact is when usage climbs this many
- * percent past the threshold — an overflow-safety cap. The user-facing
- * threshold is limited to [50, 85] so threshold + gap never exceeds 100. */
-export const DYNAMIC_COMPACT_GAP = 15;
+ * percent past the threshold — an overflow-safety cap. With dynamic compaction
+ * ON the threshold is capped at 80 (so threshold + gap ≤ 90, clear of 100 —
+ * compacting at ~100% is pointless); with it OFF there's no grace band (compaction
+ * happens AT the threshold), so the threshold may go up to 90. */
+export const DYNAMIC_COMPACT_GAP = 10;
 
 /** Hard ceiling for the mid-loop force-compact / Pi-built-in passthrough point.
  * Keeps a little headroom below the real context window so a genuine overflow

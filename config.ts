@@ -61,8 +61,8 @@ export interface ModesFile {
 	permissions?: Record<string, unknown>;
 	/** Context-usage percent at which auto-compact triggers. Overrides the
 	 *  built-in AUTO_COMPACT_THRESHOLD when present. Editable from the VS Code
-	 *  settings panel. Clamped to [50, 85] on load (the dynamic-compaction grace
-	 *  band needs threshold + DYNAMIC_COMPACT_GAP to stay under 100). */
+	 *  settings panel. Clamped on load: [50, 80] with dynamic compaction ON (the
+	 *  grace band needs threshold + DYNAMIC_COMPACT_GAP under 100), [50, 90] OFF. */
 	autoCompactThreshold?: number;
 	/** Dynamic compaction (default on). When true, the agent's multi-step turn
 	 *  is preserved — compaction runs at the turn boundary (agent_end), not
@@ -187,13 +187,15 @@ export function loadModes(_cwd: string): ModesFile {
 		if (userCfg) merged[name] = { ...DEFAULT_MODES[name], ...userCfg };
 	}
 	const defaultMode = raw.defaultMode && MODE_NAMES.includes(raw.defaultMode) ? raw.defaultMode : "code";
-	// Auto-compact threshold: accept a finite number, clamp to [50, 85] so a
-	// stray value can't make compaction run every turn or never run, and the
-	// dynamic-compaction grace band (threshold + DYNAMIC_COMPACT_GAP) stays
-	// under 100. Out of range / non-numeric → omit so the built-in applies.
+	// Auto-compact threshold: accept a finite number, clamp the upper bound by
+	// mode — dynamic ON caps at 80 (so threshold + DYNAMIC_COMPACT_GAP stays ≤ 90,
+	// clear of 100), dynamic OFF caps at 90 (no grace band — compaction happens AT
+	// the threshold). Lower bound 50 so it can't run every turn. Out of range /
+	// non-numeric → omit so the built-in applies.
+	const dynamicOn = raw.dynamicCompaction !== false; // undefined → default ON
 	let autoCompactThreshold: number | undefined;
 	if (typeof raw.autoCompactThreshold === "number" && Number.isFinite(raw.autoCompactThreshold)) {
-		autoCompactThreshold = Math.min(85, Math.max(50, Math.round(raw.autoCompactThreshold)));
+		autoCompactThreshold = Math.min(dynamicOn ? 80 : 90, Math.max(50, Math.round(raw.autoCompactThreshold)));
 	}
 	return {
 		defaultMode,
