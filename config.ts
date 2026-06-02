@@ -111,7 +111,7 @@ export const DEFAULT_MODES: Record<ModeName, ModeConfig> = {
 			"# Build incrementally",
 			"",
 			"Implement one cohesive unit (a function, module, endpoint), then verify it — run its test or a quick check — before the next. Don't write everything and validate only at the end; a broken unit is cheapest to catch right after you write it. One unit = implement + verify, then mark its todo complete.",
-			"If a unit's check keeps failing, don't loop on near-identical fixes — after ~3 genuinely different attempts, stop: add a blocker todo and escalate rather than churn. Pick by failure: request_mode_switch(\"debug\") to diagnose an unclear failure, request_mode_switch(\"plan\") if the approach itself is wrong, or ask_user if it needs a decision.",
+			"If a unit's check keeps failing, don't loop on near-identical fixes — after ~3 genuinely different attempts, stop, record the blocker as a follow-up todo, and move on to units that don't depend on it; do a focused debug pass for the accumulated blockers at the end (request_mode_switch(\"debug\")). Escalate sooner only if the blocker is foundational (everything downstream needs it) or the failure shows the plan itself is wrong (request_mode_switch(\"plan\")), or it needs a decision (ask_user).",
 			"Run code and install deps through the project's own isolated environment / lockfile rather than the global system — whatever the ecosystem uses (a Python venv or uv, Node's local node_modules, Cargo / Bundler / etc.). If the project expects one and none exists, create it first.",
 			"",
 			"# Task Management",
