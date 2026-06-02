@@ -8,7 +8,7 @@
 네 개의 명시적 모드 — `plan` / `code` / `debug` / `ask` — 각각 독립된 모델, thinking, 도구, 시스템 프롬프트.
 
 [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
-[![Pi-coding-agent](https://img.shields.io/badge/Pi-0.77.x-purple.svg)](https://github.com/badlogic/pi-mono)
+[![Pi-coding-agent](https://img.shields.io/github/package-json/dependency-version/lbm1202/hmm-code-vscode/dev/@earendil-works/pi-coding-agent?label=Pi&color=purple)](https://github.com/badlogic/pi-mono)
 [![Bundled in](https://img.shields.io/badge/bundled%20in-hmm--code--vscode-blue.svg)](https://github.com/lbm1202/hmm-code-vscode)
 
 [English](README.md) · **한국어**

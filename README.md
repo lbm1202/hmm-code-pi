@@ -8,7 +8,7 @@
 Four explicit modes — `plan` / `code` / `debug` / `ask` — with independent model, thinking, tools, and system prompt.
 
 [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
-[![Pi-coding-agent](https://img.shields.io/badge/Pi-0.77.x-purple.svg)](https://github.com/badlogic/pi-mono)
+[![Pi-coding-agent](https://img.shields.io/github/package-json/dependency-version/lbm1202/hmm-code-vscode/dev/@earendil-works/pi-coding-agent?label=Pi&color=purple)](https://github.com/badlogic/pi-mono)
 [![Bundled in](https://img.shields.io/badge/bundled%20in-hmm--code--vscode-blue.svg)](https://github.com/lbm1202/hmm-code-vscode)
 
 **English** · [한국어](README.ko.md)
