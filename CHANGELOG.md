@@ -7,6 +7,20 @@ This extension is **not** published to npm directly; it ships bundled inside the
 
 ## [Unreleased]
 
+## [0.1.2] — 2026-06-04
+
+Ships bundled in hmm-code-vscode 0.1.2.
+
+### Added
+- **Tool-output pruning.** A `context` hook (Pi's uniform-message transform, run before provider serialization → provider-agnostic) keeps the most-recent ~40k tokens of tool output verbatim and replaces older tool-result content with a short notice before each provider request. The messages are cloned, so the on-disk transcript is never touched. Gated by `modes.json:includeOldToolOutputs` (default off → prune), surfaced as a toggle in the VS Code settings panel. Keeps the live context lean so full compaction fires far less often.
+
+### Fixed
+- **Compaction cancellation.** A duplicate `session_before_compact` registration (runtime hooks were wired per `session_start`) made one compaction fire two handlers; with a compaction-model override the second saw `ours=false` and cancelled it ("Compaction cancelled"). Hooks are now wired once (a `runtimeHooksWired` guard + a per-signal dedup defense-in-depth).
+- **finalize_plan current-session handoff.** The headless plan body is deferred to a fresh agent loop (stashed on state, dispatched from `agent_end`) instead of `sendUserMessage` mid-loop — matching the mode-switch deferral pattern, so the new prompt runs with the correct captured config.
+
+### Changed
+- **`code` mode prompt** refined toward incremental delivery: implement one unit → verify it → next (rather than write-everything-then-validate), with a final acceptance pass.
+
 ## [0.1.1] — 2026-06-02
 
 First stable on the 0.1.1 line (supersedes 0.1.1-rc1 / rc2). Ships bundled in hmm-code-vscode 0.1.1.
