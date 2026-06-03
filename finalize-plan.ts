@@ -21,18 +21,19 @@ export function registerFinalizePlan(pi: ExtensionAPI, state: ModeState) {
 		parameters: Type.Object({
 			summary: Type.String({
 				description:
-					"One or two sentences stating WHAT gets built — declarative (the deliverable, not a reply to the user). Shown in the picker / dialog preview; depth goes in `body`.",
+					"One or two sentences stating WHAT gets built — declarative (the deliverable, not a reply to the user), e.g. \"A Flask web app that records sort events and animates them with a benchmark chart\". Shown in the picker / dialog preview; depth goes in `body`.",
 			}),
 			body: Type.String({
 				description:
-					"Free-form markdown design notes. Use `###` or lower (NEVER `##`) — the template wraps this in a `## Design` section, so `##` would collide with Summary/Steps. Include current state, file structure, data models, strategy, trade-offs, risks. Pin the contracts at the seams — data shapes shared across components, API/file formats where two pieces must agree, cross-cutting decisions — while leaving internal function signatures to the implementer. Where a seam contract is naturally an executable check, also pin it as a concrete `validation` entry rather than prose alone. Trivial changes can be 1-3 lines; bigger work should be richer.",
+					"Free-form markdown design notes. Use `###` or lower (NEVER `##`) — the template wraps this in a `## Design` section, so `##` would collide with Summary/Steps. Include current state, file structure, data models, strategy, trade-offs, risks. Pin the contracts at the seams — data shapes shared across components, API/file formats where two pieces must agree, cross-cutting decisions — while leaving internal function signatures to the implementer. Where a seam contract is naturally an executable check, also pin it as a concrete `validation` entry rather than prose alone. Trivial changes can be 1-3 lines; bigger work should be richer — sub-headings, code fences, mockups.",
 			}),
 			steps: Type.Array(Type.String(), {
-				description: "Ordered concrete steps for the implementing agent to follow.",
+				description:
+					"Ordered concrete steps the implementing agent follows one-by-one. Structure them as vertical slices: a step that adds testable logic ends with the command that verifies it. Don't split \"write a test\" and \"run it\" into separate steps, and don't leave verification as a single terminal \"run everything\" step.",
 			}),
 			validation: Type.Array(Type.String(), {
 				description:
-					"How to verify the implementation. Each entry is one command (e.g. `pytest tests/test_api.py`) or one scenario (e.g. `Hit /health and confirm 200`). For truly trivial changes use a single explicit entry like `No verification needed — single-file deletion`.",
+					"How to verify the implementation — code runs this list as a final acceptance gate, so each entry must be runnable headlessly by the implementing agent: a command that exits (e.g. `pytest tests/test_api.py`), a `timeout`'d launch-and-kill smoke, a framework test harness (e.g. Textual's `run_test`), or a scenario it can drive (e.g. `Hit /health and confirm 200`). For a check only a human can confirm (visual/interactive), mark it `(human)` so code runs the headless part and flags the rest instead of skipping. For genuinely trivial changes use a single explicit entry like `No verification needed — single-file deletion` so the field is never silently empty.",
 			}),
 			docs: Type.Optional(
 				Type.Array(Type.String(), {
