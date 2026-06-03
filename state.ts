@@ -171,6 +171,13 @@ export class ModeState {
 		return this.modes.dynamicCompaction ?? true;
 	}
 
+	/** Whether to keep OLD tool-call outputs in the model context verbatim
+	 *  (default false → prune them to a notice past a recent-output window; the
+	 *  full output stays in the on-disk transcript). */
+	get includeOldToolOutputs(): boolean {
+		return this.modes.includeOldToolOutputs ?? false;
+	}
+
 	computeActiveTools(name: ModeName, allToolNames: string[]): { tools: string[]; stripped: string[] } {
 		return resolveActiveTools(name, this.configFor(name).activeTools ?? [], allToolNames);
 	}

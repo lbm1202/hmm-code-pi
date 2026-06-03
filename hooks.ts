@@ -218,6 +218,24 @@ function setupHeaderFooter(rt: Runtime, ctx: any): void {
  *  the hooks re-bind onto the fresh runner. */
 let runtimeHooksWired = false;
 
+/** Tool-output prune window: the most-recent tool outputs summing to ~this many
+ *  estimated tokens (chars/4) stay verbatim; older ones get the notice below. */
+const PRUNE_TOOL_OUTPUT_WINDOW = 40_000;
+const CLEARED_TOOL_OUTPUT = "[Old tool result content cleared]";
+
+/** Flatten a toolResult message's content (string or text-part array) to text. */
+function toolResultText(m: any): string {
+	const c = m?.content;
+	if (typeof c === "string") return c;
+	if (Array.isArray(c)) {
+		return c
+			.filter((p) => p && p.type === "text" && typeof p.text === "string")
+			.map((p) => p.text)
+			.join("");
+	}
+	return "";
+}
+
 function setupRuntimeHooks(rt: Runtime): void {
 	if (runtimeHooksWired) return;
 	runtimeHooksWired = true;
@@ -227,6 +245,32 @@ function setupRuntimeHooks(rt: Runtime): void {
 	// built-in). turn_end/agent_end below drive it via compaction.evalCompaction.
 	const compaction = createCompaction(rt);
 	compaction.register();
+
+	// Tool-output pruning. Keep the most-recent ~PRUNE_TOOL_OUTPUT_WINDOW tokens
+	// of tool output verbatim; replace OLDER tool-result content with a short
+	// notice before each provider request. The `context` hook runs on Pi's uniform
+	// LLM message list (before provider serialization), so this is provider-
+	// agnostic; the structuredClone'd messages mean the on-disk transcript is
+	// never touched. Keeps the live context lean so full compaction fires far less
+	// often. Off when the user opts to keep everything (state.includeOldToolOutputs).
+	pi.on("context", async (event: any) => {
+		if (state.includeOldToolOutputs) return;
+		const msgs = event?.messages;
+		if (!Array.isArray(msgs)) return;
+		let budget = PRUNE_TOOL_OUTPUT_WINDOW;
+		for (let i = msgs.length - 1; i >= 0; i--) {
+			const m = msgs[i];
+			if (m?.role !== "toolResult") continue;
+			const text = toolResultText(m);
+			if (text === CLEARED_TOOL_OUTPUT) continue; // already pruned
+			if (budget > 0) {
+				budget -= Math.ceil(text.length / 4); // within recent window → keep
+			} else {
+				m.content = [{ type: "text", text: CLEARED_TOOL_OUTPUT }]; // older → clear
+			}
+		}
+		return { messages: msgs };
+	});
 
 	// Model swaps from /model, /preset, etc. → refresh footer + status.
 	pi.on("model_select", async (event: any, ctxMs: any) => {

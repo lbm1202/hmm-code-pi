@@ -71,6 +71,13 @@ export interface ModesFile {
 	 *  mid-loop (the legacy cut-and-compact behavior). Editable from the VS Code
 	 *  settings panel. */
 	dynamicCompaction?: boolean;
+	/** Include OLD tool-call outputs in the model context verbatim. Default false:
+	 *  tool outputs older than a recent-output window are replaced with a short
+	 *  "[Old tool result content cleared]" notice before each provider request —
+	 *  the full output always stays in the session transcript on disk — so context
+	 *  stays lean and full compaction fires far less often. Set true to keep every
+	 *  tool output in context. Editable from the VS Code settings panel. */
+	includeOldToolOutputs?: boolean;
 }
 
 export const DEFAULT_MODES: Record<ModeName, ModeConfig> = {
@@ -217,5 +224,7 @@ export function loadModes(_cwd: string): ModesFile {
 		autoCompactThreshold,
 		dynamicCompaction:
 			typeof raw.dynamicCompaction === "boolean" ? raw.dynamicCompaction : undefined,
+		includeOldToolOutputs:
+			typeof raw.includeOldToolOutputs === "boolean" ? raw.includeOldToolOutputs : undefined,
 	};
 }
