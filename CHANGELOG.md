@@ -7,6 +7,10 @@ This extension is **not** published to npm directly; it ships bundled inside the
 
 ## [Unreleased]
 
+## [0.1.3] — 2026-06-04
+
+Ships bundled in hmm-code-vscode 0.1.3.
+
 ### Changed
 - **finalize_plan field guidance consolidated into the tool schema.** The per-field "how to fill it" instructions (summary/body/steps/validation/docs) now live solely in the `finalize_plan` parameter descriptions — the single source of truth, read at call-assembly time. The plan-mode system prompt no longer restates them; it keeps only the workflow (phases, when to finalize, turn-ending rule, read-only constraints) plus the two reminders that steer Phase 1 investigation rather than call formatting (pin seam contracts; every validation entry must be a headless acceptance check). Removes the prompt↔schema duplication that had already drifted — the schema's `steps`/`validation` descriptions are enriched to match the prompt's previously-richer wording.
 
