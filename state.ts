@@ -1,5 +1,6 @@
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { MODE_NAMES, type ModeConfig, type ModeName, type ModesFile } from "./config";
+import { readPct } from "./compaction";
 import { AUTO_COMPACT_THRESHOLD, MODE_STATE_ENTRY, STATUS_KEYS } from "./constants";
 import { renderModeBox } from "./mode-box";
 import { resolveActiveTools } from "./mode-tools";
@@ -270,6 +271,14 @@ export class ModeState {
 			// mode's configured defaults?" signal — clients use it to show/hide
 			// a "reset to defaults" button.
 			ctx.ui.setStatus(STATUS_KEYS.OVERRIDDEN, this.isAnyOverridden() ? "1" : "0");
+			// Context % is tokens / model.contextWindow, so switching model (or a
+			// mode with a different model) changes it even for the same
+			// conversation. Re-push it here so the footer % updates on the switch
+			// instead of waiting for the next assistant response. (readPct is
+			// undefined right after compaction-before-first-response or when the
+			// model has no contextWindow — skip then, keeping the last value.)
+			const pct = readPct(ctx);
+			if (pct !== undefined) ctx.ui.setStatus(STATUS_KEYS.CONTEXT, `${pct.toFixed(1)}%`);
 		} catch {
 			/* setStatus may not exist on every Pi UI surface — best-effort. */
 		}

@@ -7,6 +7,9 @@ This extension is **not** published to npm directly; it ships bundled inside the
 
 ## [Unreleased]
 
+### Fixed
+- **Context % now updates on a model / mode switch.** The `context` status was only re-pushed after an assistant response, so switching to a model with a different context window left the footer % stale until the next turn. `pushStatus` (called on mode apply + model swap) now also re-pushes the context %, so it reflects the new model's window immediately. (The token count is still anchored to the last assistant usage — exact again after the next response.)
+
 ## [0.1.3] — 2026-06-04
 
 Ships bundled in hmm-code-vscode 0.1.3.
