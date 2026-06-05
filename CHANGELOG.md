@@ -7,6 +7,9 @@ This extension is **not** published to npm directly; it ships bundled inside the
 
 ## [Unreleased]
 
+### Fixed
+- **Startup banner showed a stale version.** `EXT_VERSION` was a hand-maintained literal (`v0.1.0`) that had drifted from `package.json` across several releases; the TUI banner now sources the version from `package.json` at load time (fail-soft), so it always matches the published release.
+
 ## [0.1.5] — 2026-06-05
 
 Ships bundled in hmm-code-vscode 0.1.5.
