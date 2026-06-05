@@ -8,6 +8,7 @@ This extension is **not** published to npm directly; it ships bundled inside the
 ## [Unreleased]
 
 ### Fixed
+- **`edit` tool calls with a misplaced `path` are auto-corrected.** Local models sometimes nest `path` inside an `edits[]` entry instead of putting it at the top level, which fails schema validation twice (missing top-level `path` + the edit object has a disallowed property) and wastes a retry round-trip. The `message_end` sanitizer now hoists a nested `edits[*].path` to the top level (and strips it from the edit) so the call validates on the first try.
 - **Context % now updates on a model / mode switch.** The `context` status was only re-pushed after an assistant response, so switching to a model with a different context window left the footer % stale until the next turn. `pushStatus` (called on mode apply + model swap) now also re-pushes the context %, so it reflects the new model's window immediately. (The token count is still anchored to the last assistant usage — exact again after the next response.)
 
 ## [0.1.3] — 2026-06-04

@@ -333,6 +333,30 @@ function setupRuntimeHooks(rt: Runtime): void {
 						}
 					}
 
+					// Normalize `edit` calls where the model nested `path` INSIDE an
+					// edits[] entry instead of at the top level (a common local-model
+					// slip — the edit schema wants a top-level `path`, and each edit
+					// allows only oldText/newText, so the misplaced path triggers BOTH
+					// "missing path" and "additional properties". Hoist it so the call
+					// validates instead of being rejected (Pi would feed the error back
+					// for a retry — this just saves the round-trip).
+					if (name === "edit") {
+						const args = (part as { arguments?: Record<string, unknown> }).arguments;
+						const edits = args && typeof args === "object" ? (args as any).edits : undefined;
+						if (Array.isArray(edits)) {
+							for (const ed of edits) {
+								if (ed && typeof ed === "object" && "path" in ed) {
+									const p = (ed as { path?: unknown }).path;
+									if (typeof p === "string" && p && typeof (args as any).path !== "string") {
+										(args as any).path = p; // hoist misplaced path to the top level
+									}
+									delete (ed as { path?: unknown }).path; // strip the disallowed prop
+									sanitized = true;
+								}
+							}
+						}
+					}
+
 					if (/^[a-zA-Z0-9_-]+$/.test(name)) continue;
 					const snippet = name.replace(/\s+/g, " ").slice(0, 80);
 					console.error(
