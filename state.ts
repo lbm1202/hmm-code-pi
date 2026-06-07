@@ -50,6 +50,22 @@ export class ModeState {
 	// auto trigger (which we suppress). Consumed (cleared) by the hook.
 	compactRequestedByUs = false;
 
+	/** Current todo list (full replacement on each todo_write). The auto-continue
+	 *  -after-compaction policy uses it as the "work remaining" signal. Reset on
+	 *  session_start. */
+	todos: { content?: string; status?: string; priority?: string }[] = [];
+	/** Auto-continue stuck-guard: consecutive boundary-compaction auto-continues
+	 *  with no todo completed. Reset to 0 when the completed count changes
+	 *  (progress) and on session_start. */
+	autoContinueCount = 0;
+	/** Completed-todo count at the last auto-continue (progress detector). */
+	autoContinueLastCompleted = -1;
+	/** Sticky tool-output prune boundary: how many of the oldest tool-results are
+	 *  currently cleared. Advances forward in batches (never retreats within a
+	 *  session) so the cleared prefix stays cache-stable; reset to 0 on
+	 *  session_start and after compaction, when the tool-result list is rebuilt. */
+	prunedToolCount = 0;
+
 	/** Mode's configured default model, or undefined if mode has no default. */
 	defaultModelRef(): { provider: string; id: string } | undefined {
 		const m = this.configFor(this.current)?.model;
@@ -177,6 +193,12 @@ export class ModeState {
 	 *  full output stays in the on-disk transcript). */
 	get includeOldToolOutputs(): boolean {
 		return this.modes.includeOldToolOutputs ?? false;
+	}
+
+	/** Auto-continue after an auto-compaction when incomplete todos remain
+	 *  (default on). Consumed by compaction.ts. */
+	get autoContinueAfterCompact(): boolean {
+		return this.modes.autoContinueAfterCompact ?? true;
 	}
 
 	computeActiveTools(name: ModeName, allToolNames: string[]): { tools: string[]; stripped: string[] } {

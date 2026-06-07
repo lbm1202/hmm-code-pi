@@ -78,6 +78,11 @@ export interface ModesFile {
 	 *  stays lean and full compaction fires far less often. Set true to keep every
 	 *  tool output in context. Editable from the VS Code settings panel. */
 	includeOldToolOutputs?: boolean;
+	/** Auto-continue the agent after an auto-compaction at the turn boundary, when
+	 *  there are still incomplete todos. Default true. Stops once all todos are
+	 *  done or after a few rounds with no task completed (stuck-guard). Manual
+	 *  /compact never auto-continues. Editable from the VS Code settings panel. */
+	autoContinueAfterCompact?: boolean;
 }
 
 export const DEFAULT_MODES: Record<ModeName, ModeConfig> = {
@@ -222,5 +227,7 @@ export function loadModes(_cwd: string): ModesFile {
 			typeof raw.dynamicCompaction === "boolean" ? raw.dynamicCompaction : undefined,
 		includeOldToolOutputs:
 			typeof raw.includeOldToolOutputs === "boolean" ? raw.includeOldToolOutputs : undefined,
+		autoContinueAfterCompact:
+			typeof raw.autoContinueAfterCompact === "boolean" ? raw.autoContinueAfterCompact : undefined,
 	};
 }

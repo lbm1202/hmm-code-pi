@@ -8,6 +8,12 @@ import { compact as runCompaction } from "@earendil-works/pi-coding-agent";
 import { COMPACT_HARDCAP_MAX, DYNAMIC_COMPACT_GAP } from "./constants";
 import type { Runtime } from "./runtime";
 
+/** Stuck-guard: stop auto-continuing after this many consecutive boundary
+ *  compactions with no todo completed (the counter resets on any progress). */
+const AUTO_CONTINUE_MAX = 5;
+/** Message sent to resume the agent after a boundary auto-compaction. */
+const AUTO_CONTINUE_MESSAGE = "Continue with the remaining tasks.";
+
 /** Current context-window usage percent, or undefined if unavailable. */
 export function readPct(ctx: any): number | undefined {
 	try {
@@ -68,9 +74,42 @@ export function createCompaction(rt: Runtime): Compaction {
 	const hardCap = (): number =>
 		Math.min(state.autoCompactThreshold + DYNAMIC_COMPACT_GAP, COMPACT_HARDCAP_MAX);
 
+	// Resume the agent after a boundary auto-compaction when incomplete todos
+	// remain. Stuck-guard (progress-reset cap) stops a genuinely stuck agent from
+	// looping forever. Manual /compact never reaches here — it has its own
+	// onComplete in commands.ts, so only OUR auto-compaction auto-continues.
+	const maybeAutoContinue = (ctx: any): void => {
+		if (!state.autoContinueAfterCompact) return;
+		const todos = state.todos ?? [];
+		const incomplete = todos.some((t) => t?.status === "pending" || t?.status === "in_progress");
+		if (!incomplete) {
+			state.autoContinueCount = 0;
+			return;
+		}
+		const completed = todos.filter((t) => t?.status === "completed").length;
+		// Progress since the last auto-continue (or the list changed) → reset the cap.
+		if (completed !== state.autoContinueLastCompleted) state.autoContinueCount = 0;
+		state.autoContinueLastCompleted = completed;
+		if (state.autoContinueCount >= AUTO_CONTINUE_MAX) {
+			ctx.ui.notify(
+				`Auto-continue paused after ${AUTO_CONTINUE_MAX} rounds with no task completed — send a message to resume.`,
+				"info",
+			);
+			return;
+		}
+		state.autoContinueCount++;
+		setImmediate(() => {
+			try {
+				pi.sendUserMessage(AUTO_CONTINUE_MESSAGE);
+			} catch (err) {
+				console.error("[modes:compaction] auto-continue dispatch failed:", err);
+			}
+		});
+	};
+
 	// Run OUR compaction. Sets compactRequestedByUs so session_before_compact
 	// lets it through (vs Pi's built-in auto trigger, which we suppress).
-	const triggerCompact = (ctx: any, pct: number): void => {
+	const triggerCompact = (ctx: any, pct: number, boundary: boolean): void => {
 		if (state.compactInFlight) return;
 		armCompact();
 		state.compactRequestedByUs = true;
@@ -85,6 +124,9 @@ export function createCompaction(rt: Runtime): Compaction {
 					disarmCompact();
 					rt.invalidateFooter?.();
 					rt.requestRender();
+					// Boundary auto-compaction only: the loop is idle here (compaction
+					// ran after agent_end), so resuming via sendUserMessage is safe.
+					if (boundary) maybeAutoContinue(ctx);
 				},
 				onError: (err: unknown) => {
 					disarmCompact();
@@ -108,7 +150,7 @@ export function createCompaction(rt: Runtime): Compaction {
 		const pct = readPct(ctx);
 		if (pct === undefined || pct < state.autoCompactThreshold) return;
 		const trigger = state.dynamicCompaction ? boundary || pct >= hardCap() : true;
-		if (trigger) triggerCompact(ctx, pct);
+		if (trigger) triggerCompact(ctx, pct, boundary);
 	};
 
 	const register = (): void => {

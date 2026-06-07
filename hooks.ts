@@ -84,6 +84,13 @@ export function registerHooks(rt: Runtime): void {
 			/* setStatus may not exist on every UI surface */
 		}
 
+		// Clear todo list + auto-continue-after-compaction guard so a new/switched
+		// session doesn't inherit the previous session's pending work.
+		state.todos = [];
+		state.autoContinueCount = 0;
+		state.autoContinueLastCompleted = -1;
+		state.prunedToolCount = 0;
+
 		// On reload, ctx.reload() refreshes settingsManager but NOT the
 		// modelRegistry — its cache of custom models.json + dynamic provider
 		// configs becomes stale. Explicit refresh here re-reads models.json

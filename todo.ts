@@ -7,6 +7,7 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
 import { STATUS_KEYS } from "./constants";
+import type { ModeState } from "./state";
 
 type TodoStatus = "pending" | "in_progress" | "completed" | "cancelled";
 type TodoPriority = "high" | "medium" | "low";
@@ -69,7 +70,7 @@ const TodoParams = Type.Object({
 	}),
 });
 
-export function registerTodo(pi: ExtensionAPI): void {
+export function registerTodo(pi: ExtensionAPI, state: ModeState): void {
 	pi.registerTool({
 		name: "todo_write",
 		label: "Update task list",
@@ -106,6 +107,10 @@ export function registerTodo(pi: ExtensionAPI): void {
 					isError: true,
 				};
 			}
+
+			// Mirror the live list onto state for the auto-continue-after-compaction
+			// policy (compaction.ts reads state.todos as the work-remaining signal).
+			state.todos = todos;
 
 			// Persist per-session.
 			try {

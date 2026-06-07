@@ -30,7 +30,7 @@ export default function modesExtension(pi: ExtensionAPI) {
 	registerRequestModeSwitch(pi, state);
 	registerFinalizePlan(pi, state);
 	registerAutoTitle(pi, state);
-	registerTodo(pi);
+	registerTodo(pi, state);
 
 	// Slash commands / shortcuts / event hooks
 	registerCommands(rt);
