@@ -219,6 +219,9 @@ export function createCompaction(rt: Runtime): Compaction {
 		});
 		pi.on("session_compact", async () => {
 			disarmCompact();
+			// History was summarized → the tool-result list is rebuilt; restart the
+			// sticky-prune boundary so it doesn't clear freshly-summarized results.
+			state.prunedToolCount = 0;
 			rt.invalidateFooter?.();
 			rt.requestRender();
 		});

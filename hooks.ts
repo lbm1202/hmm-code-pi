@@ -225,9 +225,19 @@ function setupHeaderFooter(rt: Runtime, ctx: any): void {
  *  the hooks re-bind onto the fresh runner. */
 let runtimeHooksWired = false;
 
-/** Tool-output prune window: the most-recent tool outputs summing to ~this many
- *  estimated tokens (chars/4) stay verbatim; older ones get the notice below. */
-const PRUNE_TOOL_OUTPUT_WINDOW = 40_000;
+/** Sticky tool-output prune parameters. The verbatim keep-floor (PROTECT) and the
+ *  prune batch / hysteresis band (MINIMUM) are DERIVED per request from the active
+ *  model's context window + the auto-compact threshold (derivePruneBudget), so they
+ *  auto-fit whatever model is loaded. The constants below are the derivation's
+ *  ratios/floors plus the fixed fallback used when the window can't be read. */
+const PRUNE_SYSTEM_RESERVE = 35_000; // est. non-tool context (system prompt + chat text), tokens
+const PRUNE_PROTECT_RATIO = 0.6; // PROTECT = usable * this
+const PRUNE_MINIMUM_RATIO = 0.3; // MINIMUM = usable * this (PROTECT+MINIMUM = 0.9*usable → ~10% headroom under the compaction point)
+const PRUNE_PROTECT_FLOOR = 8_000; // never keep less than this verbatim
+const PRUNE_MINIMUM_FLOOR = 4_000; // never batch a prune smaller than this
+const PRUNE_FALLBACK_PROTECT = 40_000; // contextWindow unknown → fixed window
+const PRUNE_FALLBACK_MINIMUM = 20_000;
+const PRUNE_TAIL_KEEP = 3; // always keep the newest N tool results verbatim
 const CLEARED_TOOL_OUTPUT = "[Old tool result content cleared]";
 
 /** Flatten a toolResult message's content (string or text-part array) to text. */
@@ -243,6 +253,29 @@ function toolResultText(m: any): string {
 	return "";
 }
 
+/** Derive the sticky-prune budget — verbatim keep-floor PROTECT + batch/hysteresis
+ *  band MINIMUM, both in estimated tokens — from the active model's context window
+ *  and the auto-compact threshold. `usable = window*threshold − SYSTEM_RESERVE` is
+ *  the room left for tool output before compaction would fire; PROTECT/MINIMUM split
+ *  it so peak verbatim (PROTECT+MINIMUM) sits ~10% under that point. Falls back to a
+ *  fixed window when the context size can't be read. */
+function derivePruneBudget(ctx: any, thresholdPct: number): { protect: number; minimum: number } {
+	let cw = 0;
+	try {
+		const usage = ctx?.getContextUsage?.();
+		cw = usage?.contextWindow ?? ctx?.model?.contextWindow ?? 0;
+	} catch {
+		cw = 0;
+	}
+	if (!cw || cw <= 0) {
+		return { protect: PRUNE_FALLBACK_PROTECT, minimum: PRUNE_FALLBACK_MINIMUM };
+	}
+	const usable = Math.max(0, cw * (thresholdPct / 100) - PRUNE_SYSTEM_RESERVE);
+	const protect = Math.max(PRUNE_PROTECT_FLOOR, Math.floor(usable * PRUNE_PROTECT_RATIO));
+	const minimum = Math.max(PRUNE_MINIMUM_FLOOR, Math.floor(usable * PRUNE_MINIMUM_RATIO));
+	return { protect, minimum };
+}
+
 function setupRuntimeHooks(rt: Runtime): void {
 	if (runtimeHooksWired) return;
 	runtimeHooksWired = true;
@@ -253,28 +286,60 @@ function setupRuntimeHooks(rt: Runtime): void {
 	const compaction = createCompaction(rt);
 	compaction.register();
 
-	// Tool-output pruning. Keep the most-recent ~PRUNE_TOOL_OUTPUT_WINDOW tokens
-	// of tool output verbatim; replace OLDER tool-result content with a short
-	// notice before each provider request. The `context` hook runs on Pi's uniform
-	// LLM message list (before provider serialization), so this is provider-
-	// agnostic; the structuredClone'd messages mean the on-disk transcript is
-	// never touched. Keeps the live context lean so full compaction fires far less
-	// often. Off when the user opts to keep everything (state.includeOldToolOutputs).
-	pi.on("context", async (event: any) => {
+	// Sticky tool-output pruning. Replace OLD tool-result content with a short
+	// notice before each provider request, keeping the most-recent tool output
+	// verbatim. Unlike a sliding window (which re-picks the kept set every request
+	// and shifts the cached prefix → cache thrash), the cleared prefix here is a
+	// STABLE boundary (state.prunedToolCount) that only advances forward, in
+	// batches, once the verbatim tail exceeds PROTECT+MINIMUM — so the prompt prefix
+	// stays cache-stable between advances. The `context` hook runs on Pi's uniform
+	// LLM message list (provider-agnostic, before serialization) and the on-disk
+	// transcript is never touched. Off when the user opts to keep everything
+	// (state.includeOldToolOutputs).
+	pi.on("context", async (event: any, ctx: any) => {
 		if (state.includeOldToolOutputs) return;
 		const msgs = event?.messages;
 		if (!Array.isArray(msgs)) return;
-		let budget = PRUNE_TOOL_OUTPUT_WINDOW;
-		for (let i = msgs.length - 1; i >= 0; i--) {
-			const m = msgs[i];
-			if (m?.role !== "toolResult") continue;
-			const text = toolResultText(m);
-			if (text === CLEARED_TOOL_OUTPUT) continue; // already pruned
-			if (budget > 0) {
-				budget -= Math.ceil(text.length / 4); // within recent window → keep
-			} else {
-				m.content = [{ type: "text", text: CLEARED_TOOL_OUTPUT }]; // older → clear
+
+		// Indices of every tool-result message, oldest → newest.
+		const trIdx: number[] = [];
+		for (let i = 0; i < msgs.length; i++) {
+			if (msgs[i]?.role === "toolResult") trIdx.push(i);
+		}
+		const n = trIdx.length;
+		if (n === 0) return;
+
+		const { protect, minimum } = derivePruneBudget(ctx, state.autoCompactThreshold);
+		const maxPrunable = n - Math.min(PRUNE_TAIL_KEEP, n); // never prune the newest TAIL_KEEP
+		const tok = (k: number): number => Math.ceil(toolResultText(msgs[trIdx[k]]).length / 4);
+
+		// Stable boundary: the first `pruned` tool results stay cleared across
+		// requests so the cached prefix doesn't move. Clamp to the prunable range
+		// (self-heals after a compaction shrinks the tool-result list).
+		let pruned = Math.min(Math.max(state.prunedToolCount | 0, 0), maxPrunable);
+
+		// Verbatim tokens held by the not-yet-pruned tail.
+		let verbatim = 0;
+		for (let k = pruned; k < n; k++) verbatim += tok(k);
+
+		// Hysteresis: advance the boundary only once the tail crosses the high-water
+		// (PROTECT+MINIMUM), then prune oldest-first back down to PROTECT. Each
+		// advance clears a whole batch (≥ MINIMUM), so the boundary is stable between
+		// advances — one cache break per ~MINIMUM tokens of new output, not one per
+		// request.
+		if (verbatim > protect + minimum) {
+			while (pruned < maxPrunable && verbatim > protect) {
+				verbatim -= tok(pruned);
+				pruned++;
 			}
+		}
+		state.prunedToolCount = pruned;
+
+		// Apply: clear the first `pruned` tool-result messages (idempotent).
+		for (let k = 0; k < pruned; k++) {
+			const m = msgs[trIdx[k]];
+			if (toolResultText(m) === CLEARED_TOOL_OUTPUT) continue;
+			m.content = [{ type: "text", text: CLEARED_TOOL_OUTPUT }];
 		}
 		return { messages: msgs };
 	});
