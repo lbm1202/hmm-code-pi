@@ -37,7 +37,9 @@ Four explicit modes — `plan` / `code` / `debug` / `ask` — with independent m
 | 📚 **AGENTS.md injection** | `${cwd}/AGENTS.md` + `~/.pi/agent/AGENTS.md` auto-appended to the system prompt |
 | 🩹 **Tool-call name sanitizer** | Repairs mangled tool names from local models (Qwen vLLM, etc.) — prevents codex hard-stuck |
 | ✨ **Auto-titles** | First message pair → GPT-mini → session title (fire-and-forget) |
-| 📦 **Dynamic compaction** | Summarizes context at the turn boundary (not mid-loop) once usage passes the threshold (default 75%, `modes.json:autoCompactThreshold`, range 50–85); `dynamicCompaction` toggles it. Manual `/compact`. |
+| 📦 **Dynamic compaction** | Summarizes context at the turn boundary (not mid-loop) once usage passes the threshold (default 70%, `modes.json:autoCompactThreshold`, range 50–85); `dynamicCompaction` toggles it. Manual `/compact`. |
+| ↻ **Auto-continue after compaction** | After a boundary auto-compaction with incomplete todos, resumes the agent automatically (stuck-guarded); `modes.json:autoContinueAfterCompact` (default on). |
+| ✂️ **Sticky tool-output pruning** | A `context` hook clears OLD tool outputs to a notice (full output stays in the transcript), keeping a *sticky* recent window so the prompt cache doesn't thrash; the window auto-derives from the model's context size. `modes.json:includeOldToolOutputs` (default off → prune). |
 
 ---
 
@@ -133,7 +135,7 @@ Workflow diagram + handoff details: [docs/WORKFLOW.md](docs/WORKFLOW.md).
 
 | Path | Contents |
 |---|---|
-| `~/.pi/agent/modes.json` | Per-mode model / thinking / activeTools / systemPromptAddendum / temperature / chatTemplate, modelAliases, autoTitle (model) + autoTitlePrompt, autoCompactThreshold + dynamicCompaction + compactModel + compactInstructions, modelAllowlist, **permissions** |
+| `~/.pi/agent/modes.json` | Per-mode model / thinking / activeTools / systemPromptAddendum / temperature / chatTemplate, modelAliases, autoTitle (model) + autoTitlePrompt, autoCompactThreshold + dynamicCompaction + includeOldToolOutputs + autoContinueAfterCompact + todoPanel + compactModel + compactInstructions, modelAllowlist, **permissions** |
 | `${cwd}/.pi/permissions.json` | Project-level permission overrides (overrides the global rules) |
 | `${cwd}/.piignore` | gitignore-style hard block (denied for every tool) |
 | `${cwd}/AGENTS.md` | Project context (auto-injected into the system prompt) |
