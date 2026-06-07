@@ -1,6 +1,6 @@
 {
   "name": "hmm-code-pi",
-  "version": "0.1.5",
+  "version": "0.1.6",
   "description": "Pi coding agent extension — plan/code/debug/ask modes + permissions + AGENTS.md auto-injection",
   "author": "lbm1202",
   "license": "MIT",

@@ -7,6 +7,10 @@ This extension is **not** published to npm directly; it ships bundled inside the
 
 ## [Unreleased]
 
+## [0.1.6] — 2026-06-08
+
+Ships bundled in hmm-code-vscode 0.1.6.
+
 ### Added
 - **Auto-continue after auto-compaction.** When a turn-boundary auto-compaction finishes and the todo list still has incomplete tasks, the agent is automatically prompted to continue the remaining work — so long multi-step runs don't stall on the user right after a compaction. The live todo list is tracked in session state as the "work remaining" signal; a stuck-guard pauses auto-continue after a few rounds with no task completed, and manual `/compact` never auto-continues. Gated by `modes.json:autoContinueAfterCompact` (default on), surfaced as a toggle in the VS Code settings panel.
 
