@@ -7,6 +7,12 @@ This extension is **not** published to npm directly; it ships bundled inside the
 
 ## [Unreleased]
 
+### Added
+- **Auto-continue after auto-compaction.** When a turn-boundary auto-compaction finishes and the todo list still has incomplete tasks, the agent is automatically prompted to continue the remaining work — so long multi-step runs don't stall on the user right after a compaction. The live todo list is tracked in session state as the "work remaining" signal; a stuck-guard pauses auto-continue after a few rounds with no task completed, and manual `/compact` never auto-continues. Gated by `modes.json:autoContinueAfterCompact` (default on), surfaced as a toggle in the VS Code settings panel.
+
+### Changed
+- **Tool-output pruning is now sticky (was a sliding window).** The `context`-hook prune kept the most-recent ~40k tokens of tool output by re-picking the kept set on every request, which shifted the cleared boundary each tool turn and invalidated the prompt cache from that point to the end — a cache miss on essentially every tool turn once the window filled. It now holds a stable boundary that only advances forward in batches: the oldest tool output is cleared only once the verbatim tail exceeds a high-water mark, then pruned back to a keep-floor, so the cached prefix stays stable between advances (roughly one cache break per batch instead of one per tool turn). The keep-floor (PROTECT) and batch/hysteresis band (MINIMUM) are derived per request from the model's context window + the auto-compact threshold, so they auto-fit any model; the newest few tool results are always kept verbatim, and the boundary resets on session_start and after compaction. Still gated by `includeOldToolOutputs` (default off → prune).
+
 ### Fixed
 - **Startup banner showed a stale version.** `EXT_VERSION` was a hand-maintained literal (`v0.1.0`) that had drifted from `package.json` across several releases; the TUI banner now sources the version from `package.json` at load time (fail-soft), so it always matches the published release.
 
