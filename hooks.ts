@@ -40,8 +40,14 @@ export function registerHooks(rt: Runtime): void {
 	pi.on("before_agent_start", async (event, ctx) => {
 		const addendum = state.config?.systemPromptAddendum;
 		const agents = readAgentsMd(ctx?.cwd);
-		if (!addendum && !agents) return;
+		// Include the active session id in the system prompt — unique per session,
+		// constant for the session's lifetime.
+		const sid = ctx?.sessionManager?.getSessionId?.();
+		if (!addendum && !agents && !sid) return;
 		const sections = [event.systemPrompt];
+		if (sid) {
+			sections.push(`Session ID: ${sid}`);
+		}
 		if (addendum) {
 			sections.push(`## Active mode: ${state.current}\n${addendum}`);
 		}
