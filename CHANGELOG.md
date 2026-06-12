@@ -7,6 +7,13 @@ This extension is **not** published to npm directly; it ships bundled inside the
 
 ## [Unreleased]
 
+## [0.1.7] — 2026-06-12
+
+Ships bundled in hmm-code-vscode 0.1.7.
+
+### Changed
+- The agent's system prompt now includes the active session id (constant for the session's lifetime).
+
 ## [0.1.6] — 2026-06-08
 
 Ships bundled in hmm-code-vscode 0.1.6.
