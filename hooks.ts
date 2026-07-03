@@ -10,9 +10,24 @@ import { loadModes, MODE_NAMES, type ModeName } from "./config";
 import { writeExampleConfigIfMissing, ensureKeybindingsOverride, ensureQuietStartup } from "./config-io";
 import { DEFAULT_BASH_TIMEOUT_SEC, STATUS_KEYS } from "./constants";
 import { createCompaction, readPct } from "./compaction";
+import { reconcileEditInput, buildEditFailureHint } from "./edit-reconcile";
 import { abbreviateCwd, ansi24, buildBannerLines, fmtTokens } from "./ui";
 import { modeColor } from "./state";
 import type { Runtime } from "./runtime";
+
+/** Remove pi-ai's "Pi documentation" block from a system prompt. It only points
+ *  the model at Pi's own README / docs / examples, which is noise for coding work —
+ *  dropping it keeps the system prompt lean and focused on the task. */
+function stripPiSelfDocs(prompt: string): string {
+	if (!prompt) return prompt;
+	return prompt
+		.replace(
+			/\n*Pi documentation \(read only when the user asks about pi[\s\S]*?tui\.md for TUI API details\)\n*/g,
+			"\n\n",
+		)
+		.replace(/\n{3,}/g, "\n\n")
+		.trimEnd();
+}
 
 export function registerHooks(rt: Runtime): void {
 	const { pi, state } = rt;
@@ -38,16 +53,13 @@ export function registerHooks(rt: Runtime): void {
 	// prompt. Re-evaluated each agent_start, so editing AGENTS.md mid-session
 	// takes effect on the next user prompt without a reload.
 	pi.on("before_agent_start", async (event, ctx) => {
+		// Drop Pi's self-documentation block (coding-irrelevant noise; see stripPiSelfDocs).
+		const systemPrompt = stripPiSelfDocs(event.systemPrompt);
+		const stripped = systemPrompt !== event.systemPrompt;
 		const addendum = state.config?.systemPromptAddendum;
 		const agents = readAgentsMd(ctx?.cwd);
-		// Include the active session id in the system prompt — unique per session,
-		// constant for the session's lifetime.
-		const sid = ctx?.sessionManager?.getSessionId?.();
-		if (!addendum && !agents && !sid) return;
-		const sections = [event.systemPrompt];
-		if (sid) {
-			sections.push(`Session ID: ${sid}`);
-		}
+		if (!stripped && !addendum && !agents) return;
+		const sections = [systemPrompt];
 		if (addendum) {
 			sections.push(`## Active mode: ${state.current}\n${addendum}`);
 		}
@@ -348,6 +360,41 @@ function setupRuntimeHooks(rt: Runtime): void {
 			m.content = [{ type: "text", text: CLEARED_TOOL_OUTPUT }];
 		}
 		return { messages: msgs };
+	});
+
+	// Edit reconciliation (Fix B). Before an `edit` runs, fix a structurally
+	// shifted oldText so Pi's exact match succeeds — weak local models get code
+	// content right but indentation wrong (e.g. authored at 8 spaces when the file
+	// uses 4). reconcileEditInput mutates event.input in place (tool_call inputs
+	// are mutable, no re-validation) and is conservative: it only rewrites on a
+	// unique dedent-anchored match, leaving everything else for the failure hint.
+	pi.on("tool_call", async (event: any, ctxTc: any) => {
+		if (event?.toolName !== "edit") return;
+		try {
+			reconcileEditInput(event.input, ctxTc?.cwd);
+		} catch (err) {
+			console.error("[modes:edit-reconcile] tool_call failed:", err);
+		}
+	});
+
+	// Edit failure hint (Fix A). When an `edit` still fails to find its oldText,
+	// append the file's actual bytes near the closest match with whitespace made
+	// visible (· space, → tab), so the model self-corrects instead of falling back
+	// to opaque `bash python3` heredoc writes.
+	pi.on("tool_result", async (event: any, ctxTr: any) => {
+		if (event?.toolName !== "edit" || !event?.isError) return;
+		try {
+			const errText = (event.content ?? [])
+				.filter((c: any) => c?.type === "text" && typeof c.text === "string")
+				.map((c: any) => c.text)
+				.join("\n");
+			const hint = buildEditFailureHint(event.input, errText, ctxTr?.cwd);
+			if (hint) {
+				return { content: [...(event.content ?? []), { type: "text", text: "\n" + hint }] };
+			}
+		} catch (err) {
+			console.error("[modes:edit-reconcile] tool_result failed:", err);
+		}
 	});
 
 	// Model swaps from /model, /preset, etc. → refresh footer + status.
