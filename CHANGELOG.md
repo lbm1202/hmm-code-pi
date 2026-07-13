@@ -7,6 +7,10 @@ This extension is **not** published to npm directly; it ships bundled inside the
 
 ## [Unreleased]
 
+## [0.1.11] — 2026-07-13
+
+Ships bundled in hmm-code-vscode 0.1.13.
+
 ### Added
 - **Internal `/auth-refresh <provider>` command** (dispatched by the VS Code client, hidden from its autocomplete): resolves the provider's API key through the model registry, which refreshes + persists an expired OAuth token under AuthStorage's file lock — no LLM request involved. Lets usage lookups recover from an expired access token instead of surfacing a 401.
 
