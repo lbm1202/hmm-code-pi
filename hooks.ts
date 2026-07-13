@@ -252,18 +252,26 @@ function setupHeaderFooter(rt: Runtime, ctx: any): void {
 }
 
 /** Guards setupRuntimeHooks so its pi.on registrations run exactly once per
- *  process. setupRuntimeHooks is invoked from the session_start handler (it sits
- *  next to the per-session header/footer/editor wiring), so without this it
- *  re-registers model_select / message_end / turn_end / agent_end / compaction on
- *  EVERY session_start — boot + auto-resume + each picker switch — stacking
- *  duplicate handlers on the runner. The duplicate session_before_compact handler
- *  is what made auto-compaction cancel itself (the first consumed compactRequested
- *  ByUs, the second saw "not ours" and returned {cancel}). These handlers read the
- *  live session via the EVENT ctx and the shared ModeState (rt is the same boot
- *  instance every session_start), so wiring them once is correct. On /reload the
- *  whole module is re-evaluated (jiti moduleCache:false), resetting this flag so
- *  the hooks re-bind onto the fresh runner. */
-let runtimeHooksWired = false;
+ *  EXTENSION INSTANCE (keyed on rt.pi). setupRuntimeHooks is invoked from the
+ *  session_start handler (it sits next to the per-session header/footer/editor
+ *  wiring), so without a guard it re-registers model_select / message_end /
+ *  turn_end / agent_end / compaction on EVERY session_start, stacking duplicate
+ *  handlers on the runner. The duplicate session_before_compact handler is what
+ *  made auto-compaction cancel itself (the first consumed compactRequestedByUs,
+ *  the second saw "not ours" and returned {cancel}).
+ *
+ *  Why per-instance and NOT once-per-process (a module-level boolean, the old
+ *  form): Pi ≥ 0.79.9 re-instantiates extensions on every session switch —
+ *  fresh `pi` emitter + fresh Runtime — while REUSING the imported module, so
+ *  module state survives. With a process-wide flag the new instance's
+ *  session_start found the flag already set and skipped wiring, leaving the
+ *  live runner with NO runtime hooks after any new-session/resume/switch:
+ *  no status pushes on model change (the VS Code reset button never showed),
+ *  no auto-compaction eval, no deferred plan dispatch, no review auto-return.
+ *  The WeakSet keys registrations to the live emitter: each fresh instance
+ *  wires once; repeat session_starts on the SAME instance (old Pi) still
+ *  skip, preserving the duplicate-handler fix. */
+const runtimeHooksWiredFor = new WeakSet<object>();
 
 /** Sticky tool-output prune parameters. The verbatim keep-floor (PROTECT) and the
  *  prune batch / hysteresis band (MINIMUM) are DERIVED per request from the active
@@ -317,8 +325,8 @@ function derivePruneBudget(ctx: any, thresholdPct: number): { protect: number; m
 }
 
 function setupRuntimeHooks(rt: Runtime): void {
-	if (runtimeHooksWired) return;
-	runtimeHooksWired = true;
+	if (runtimeHooksWiredFor.has(rt.pi as object)) return;
+	runtimeHooksWiredFor.add(rt.pi as object);
 	const { pi, state } = rt;
 
 	// Context-compaction policy (watchdog, dynamic-vs-legacy, suppress Pi's

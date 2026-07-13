@@ -10,6 +10,9 @@ This extension is **not** published to npm directly; it ships bundled inside the
 ### Added
 - **`max` thinking level** (Pi ≥ 0.80.6): available in `/thinking-toggle`, `/mode-set`, and `modes.json:thinkingLevel` for models that explicitly map it (adaptive Claude models, GPT-5.6). Gated like `xhigh` — only shown when the model's `thinkingLevelMap` declares it.
 
+### Fixed
+- **Runtime hooks lost after a session switch on Pi ≥ 0.79.9.** Pi re-instantiates extensions on every session switch (new session / resume / picker switch) while reusing the imported module, so the old once-per-process guard skipped re-wiring `model_select` / `message_end` / `turn_end` / `agent_end` / compaction onto the fresh instance. After any switch: no status pushes on model change (the VS Code reset-to-defaults button never appeared), auto-compaction stopped evaluating, deferred plan dispatch and the review auto-return never fired. The guard is now keyed per extension instance (WeakSet), which also preserves the original duplicate-handler fix on older Pi.
+
 ### Changed
 - `/thinking-toggle` now filters cycle levels with Pi's canonical supported-levels semantics (null-mapped excluded; `xhigh`/`max` require an explicit mapping). Previously a model with no `thinkingLevelMap` offered `xhigh` in the cycle even when unsupported; the toggle now matches the `/mode-set` picker and Pi's own selector.
 - The `compactModel` override now forwards provider-scoped auth `env` values to the summarization call (Pi ≥ 0.80.6 `compact()` 9th arg; older Pi ignores it), so env-configured providers (Bedrock/Vertex/proxy) work as the compaction model.
