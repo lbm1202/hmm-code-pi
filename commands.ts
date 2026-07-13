@@ -79,6 +79,27 @@ export function registerCommands(rt: Runtime): void {
 		},
 	});
 
+	// Internal bridge for the VS Code client: resolve a provider's API key via
+	// the model registry, WITHOUT an LLM request. For an oauth credential whose
+	// access token has expired, AuthStorage refreshes it (locked) and persists
+	// the rotated tokens to auth.json — Pi stays the single writer of token
+	// state. The client dispatches this before subscription-usage lookups so an
+	// expired token doesn't surface as a 401; silent and best-effort.
+	pi.registerCommand("auth-refresh", {
+		description: "Internal (VS Code): refresh a provider's OAuth token if expired",
+		handler: async (args, ctx) => {
+			const provider = (args ?? "").trim();
+			if (!provider) return;
+			try {
+				const models = (ctx.modelRegistry as any).getAvailable?.() ?? [];
+				const model = models.find((m: any) => m?.provider === provider);
+				if (model) await (ctx.modelRegistry as any).getApiKeyAndHeaders?.(model);
+			} catch (err) {
+				console.error("[modes:auth-refresh] failed:", err);
+			}
+		},
+	});
+
 	// Handoff entry into review mode (dispatched by the VS Code client after
 	// finalize_implementation's REVIEW_HANDOFF). Unlike /mode review, it
 	// remembers the prior mode and auto-returns to it once the review reply's
