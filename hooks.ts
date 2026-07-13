@@ -145,18 +145,26 @@ export function registerHooks(rt: Runtime): void {
 			}
 		}
 
-		const kb = ensureKeybindingsOverride();
-		const qs = ensureQuietStartup();
-		if (kb.updated || qs.updated) {
-			ctx.ui.notify(
-				`modes: wrote ${[kb.updated && "keybindings", qs.updated && "settings"]
-					.filter(Boolean)
-					.join(" + ")}. Auto-reloading to apply…`,
-				"info",
-			);
-			// editor isn't created yet at this point — defer until setEditorComponent
-			// runs later in this same session_start handler.
-			setTimeout(() => state.submitSlash("/reload"), 500);
+		// TUI-only config writes: keybinding overrides and quiet-startup settings
+		// affect nothing outside the terminal UI, so skip them in RPC mode
+		// (stdout is a pipe there — same signal the scrollback-clear above uses).
+		// Beyond being pointless, the first-run notify used to land as the very
+		// first chat message in the VS Code client, which hid the empty state —
+		// and the onboarding card inside it — on a fresh install.
+		if (process.stdout.isTTY) {
+			const kb = ensureKeybindingsOverride();
+			const qs = ensureQuietStartup();
+			if (kb.updated || qs.updated) {
+				ctx.ui.notify(
+					`modes: wrote ${[kb.updated && "keybindings", qs.updated && "settings"]
+						.filter(Boolean)
+						.join(" + ")}. Auto-reloading to apply…`,
+					"info",
+				);
+				// editor isn't created yet at this point — defer until setEditorComponent
+				// runs later in this same session_start handler.
+				setTimeout(() => state.submitSlash("/reload"), 500);
+			}
 		}
 
 		if (ctx.hasUI) {
