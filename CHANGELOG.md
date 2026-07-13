@@ -7,6 +7,24 @@ This extension is **not** published to npm directly; it ships bundled inside the
 
 ## [Unreleased]
 
+## [0.1.9] — 2026-07-13
+
+Ships bundled in hmm-code-vscode 0.1.11.
+
+### Added
+- **`review` mode (5th mode) + plan→code→review loop.** After a plan handoff, the implementing code session calls the new `finalize_implementation` tool once every step is done and validated. The user picks what happens next (mirroring finalize_plan's dialog): **hand off to review**, **continue implementing** (free-form feedback goes back to the model), or **not now**. On review, an implementation report (summary / per-file changes / validation results / deviations) is written under `~/.pi/agent/reports/` — only then; the other choices leave no artifact — and the review starts in the parent plan session for RPC clients (via the new `review-handoff` status; the parent session path is resolved Pi-side from the session header, so the handoff survives client reloads), or in the current session for TUI/headless runs. Review mode re-verifies the actual files against the plan's steps and pinned seam contracts, runs every entry in the plan's Validation section (full bash; edit/write disabled — same defense-in-depth denies as ask), and ends with PASS or a findings list, then stops. If the user asks for fixes, review calls `finalize_plan` directly with the fix-list (`finalize_plan` now accepts plan OR review mode), re-entering the code→review loop.
+- **Review-target gating**: `finalize_implementation` only exists in sessions that can actually hand off — a parent plan session, or a plan finalized in the session itself (tracked via a session entry, so it survives resume). Standalone code sessions never see the tool.
+- **Artifact retention (`artifactRetentionDays`)**: plan files and implementation reports are garbage-collected at session start once older than this many days (default 30, `0` = keep forever). Editable from the VS Code settings panel.
+- `STATUS_KEYS.REVIEW_HANDOFF` (`review-handoff`) — value format `"<reportPath>|<parentSessionPath or empty>"`.
+- **Internal `/stats-record` command** (dispatched by the VS Code webview, hidden from its autocomplete): appends a `webview-stats` custom entry (`{key, stats}`) to the session so client-measured per-message timings (ttft / generation / total / thinking) persist in the transcript and survive reloads. Silent + best-effort; Pi itself never consumes the entry.
+
+### Changed
+- **Plan-handoff sessions are titled by WHAT they build.** Every implementation child session used to get a near-identical auto-title ("run the saved plan step by step") because its first message is always the same handoff boilerplate. The auto-titler now detects that template and feeds the plan's own `## Summary` section to the title model instead, so each child session gets a distinct, meaningful name.
+- Plan-handoff bodies (finalize_plan current-session, `/plan-execute`, and the VS Code client template) now tell the code session to call `finalize_implementation` after the final validation pass (code target only — debug handoffs unchanged).
+- `request_mode_switch`: entering code stays finalize_plan-gated; the rejection message now also points at review's direct `finalize_plan` path.
+- **Dialog strings are now localized** (`l10n.ts`, keyed on the `HMM_CODE_LANG` env the VS Code host already passes): the finalize_plan / finalize_implementation choice dialogs, their revise/continue input prompts, and the request_mode_switch confirmation show in Korean when the VS Code UI language is Korean. TUI (no env) stays English.
+- **Handoff reviews auto-return to the prior mode.** Entering review via the handoff (new `/review-begin` command, or finalize_implementation's same-session branches) remembers the mode it came from and switches back once the review reply's turn ends — so a plan session that hosted a review is a plan session again when you read the findings. A manual mode change mid-review wins, and manual `/mode review` stays sticky as before.
+
 ## [0.1.7] — 2026-06-12
 
 Ships bundled in hmm-code-vscode 0.1.7.
