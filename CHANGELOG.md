@@ -7,6 +7,10 @@ This extension is **not** published to npm directly; it ships bundled inside the
 
 ## [Unreleased]
 
+## [0.1.10] — 2026-07-13
+
+Ships bundled in hmm-code-vscode 0.1.12.
+
 ### Added
 - **`max` thinking level** (Pi ≥ 0.80.6): available in `/thinking-toggle`, `/mode-set`, and `modes.json:thinkingLevel` for models that explicitly map it (adaptive Claude models, GPT-5.6). Gated like `xhigh` — only shown when the model's `thinkingLevelMap` declares it.
 
