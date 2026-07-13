@@ -7,6 +7,10 @@ This extension is **not** published to npm directly; it ships bundled inside the
 
 ## [Unreleased]
 
+## [0.1.12] — 2026-07-14
+
+Ships bundled in hmm-code-vscode 0.1.14.
+
 ### Fixed
 - First-run TUI config writes (keybinding overrides, quiet-startup settings) no longer run in RPC mode — their "wrote keybindings + settings" notify landed as the first chat message in the VS Code client, hiding the empty state (and the onboarding card) on a fresh install.
 
