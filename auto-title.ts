@@ -4,6 +4,7 @@
 // the model you're chatting with). Falls back to code-mode's model, then a
 // cheap GPT, only when there's no usable active model. Runs once per session.
 
+import { readFileSync } from "node:fs";
 import { completeSimple } from "@earendil-works/pi-ai";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { DEFAULT_AUTO_TITLE_PROMPT } from "./constants";
@@ -121,7 +122,7 @@ export function registerAutoTitle(pi: ExtensionAPI, state: ModeState): void {
 		// Mark BEFORE async to prevent re-entry on subsequent message_end events.
 		titledSessions.add(sessionId);
 
-		const userText = extractText(firstUserEntry.message?.content);
+		const userText = enrichHandoffText(extractText(firstUserEntry.message?.content));
 		const assistantText = extractText(event.message?.content);
 
 		// Fire-and-forget the LLM call. Awaiting it inside the message_end
@@ -227,6 +228,26 @@ function extractText(content: any): string {
 		.filter((p: any) => p && p.type === "text" && typeof p.text === "string")
 		.map((p: any) => p.text)
 		.join("");
+}
+
+/** Plan-handoff child sessions all open with the same boilerplate ("A plan was
+ *  saved at <path>. Read it first…"), so every implementation session used to
+ *  get a near-identical title ("run the saved plan step by step"). When the
+ *  first user message is that template, swap the boilerplate for the plan's
+ *  own `## Summary` section so each child is titled by WHAT it builds. Falls
+ *  back to the original text when the file / section can't be read. */
+function enrichHandoffText(text: string): string {
+	const m = text.match(/A plan was saved at (.+?\.md)/);
+	if (!m) return text;
+	try {
+		const plan = readFileSync(m[1], "utf-8");
+		const sm = plan.match(/^## Summary\s*\n+([\s\S]*?)(?=\n## |\n*$)/m);
+		const summary = sm?.[1]?.trim();
+		if (summary) return `Implement this plan: ${summary.slice(0, 500)}`;
+	} catch {
+		/* plan file unreadable — title from the template as before */
+	}
+	return text;
 }
 
 function extractThinking(content: any): string {
