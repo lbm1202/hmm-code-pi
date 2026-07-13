@@ -3,7 +3,7 @@
 import { existsSync } from "node:fs";
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { MODE_NAMES, type ModeName } from "./config";
-import { BINARY_THINKING_FORMATS, MODE_STATE_ENTRY, STATUS_KEYS } from "./constants";
+import { BINARY_THINKING_FORMATS, MODE_STATE_ENTRY, STATUS_KEYS, WEBVIEW_STATS_ENTRY } from "./constants";
 import { updateModeConfigField } from "./config-io";
 import type { Runtime } from "./runtime";
 
@@ -54,6 +54,46 @@ export function registerCommands(rt: Runtime): void {
 	pi.registerCommand("mode-set", {
 		description: "Configure modes (model + thinking) — edit multiple, auto-reload on exit",
 		handler: async (_args, ctx) => modeSetHandler(rt, ctx),
+	});
+
+	// Internal bridge for the VS Code client: persists client-MEASURED message
+	// stats (ttft / generation / total / thinking durations) into the session
+	// transcript as a custom entry, so the webview's stats display survives
+	// reloads and travels with the session file. Dispatched clean (no LLM turn)
+	// through the slash path; silent and best-effort by design — a malformed
+	// payload is dropped, never surfaced.
+	pi.registerCommand("stats-record", {
+		description: "Internal (VS Code): record client-measured message stats into the session",
+		handler: async (args, _ctx) => {
+			try {
+				const parsed = JSON.parse((args ?? "").trim()) as {
+					key?: unknown;
+					stats?: unknown;
+				};
+				if (parsed && typeof parsed.key === "string" && parsed.stats && typeof parsed.stats === "object") {
+					pi.appendEntry(WEBVIEW_STATS_ENTRY, { key: parsed.key, stats: parsed.stats });
+				}
+			} catch {
+				/* malformed payload — drop silently */
+			}
+		},
+	});
+
+	// Handoff entry into review mode (dispatched by the VS Code client after
+	// finalize_implementation's REVIEW_HANDOFF). Unlike /mode review, it
+	// remembers the prior mode and auto-returns to it once the review reply's
+	// turn ends (agent_end in hooks.ts) — so the parent plan session comes back
+	// as a plan session after the review is presented.
+	pi.registerCommand("review-begin", {
+		description: "Enter review mode; auto-returns to the prior mode when the review reply ends",
+		handler: async (_args, ctx) => {
+			if (state.current === "review") {
+				ctx.ui.notify("Already in review mode", "info");
+				return;
+			}
+			state.pendingReviewRevertMode = state.current;
+			await state.apply("review", ctx);
+		},
 	});
 
 	pi.registerCommand("plan-execute", {
@@ -414,13 +454,20 @@ async function planExecuteHandler(rt: Runtime, ctx: ExtensionContext): Promise<v
 
 	// Reference the plan FILE rather than pasting the full text into the
 	// editor. The new session's LLM reads the file itself via its Read tool.
-	const body = [
+	const bodyLines = [
 		`You are now in ${targetMode.toUpperCase()} mode (handoff from plan). You are no longer read-only — edit/write/bash are available.`,
 		"",
 		`A plan was saved at ${planPath}. Read it first, then implement exactly what it specifies. Do not re-plan, expand scope, refactor adjacent code, or add features the plan did not ask for.`,
 		"",
 		`If the plan has a real gap (missing step, contradicts the code, wrong path), call request_mode_switch("plan", reason, summary) instead of improvising.`,
-	].join("\n");
+	];
+	if (targetMode === "code") {
+		bodyLines.push(
+			"",
+			"When every step is done and the final validation pass is green, call finalize_implementation — it writes the implementation report and hands the work to review.",
+		);
+	}
+	const body = bodyLines.join("\n");
 
 	const newSession = (ctx as { newSession?: Function }).newSession;
 	if (typeof newSession !== "function") {

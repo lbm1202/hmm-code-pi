@@ -4,9 +4,9 @@ import { join } from "node:path";
 
 export const MODES_CONFIG_PATH = join(homedir(), ".pi", "agent", "modes.json");
 
-export type ModeName = "plan" | "code" | "debug" | "ask";
+export type ModeName = "plan" | "code" | "debug" | "ask" | "review";
 // Order here defines the Tab-cycle sequence and the /mode picker order.
-export const MODE_NAMES: ModeName[] = ["code", "plan", "debug", "ask"];
+export const MODE_NAMES: ModeName[] = ["code", "plan", "debug", "ask", "review"];
 
 export interface ModelRef {
 	provider: string;
@@ -83,6 +83,10 @@ export interface ModesFile {
 	 *  done or after a few rounds with no task completed (stuck-guard). Manual
 	 *  /compact never auto-continues. Editable from the VS Code settings panel. */
 	autoContinueAfterCompact?: boolean;
+	/** Retention (days) for plan/report artifacts under ~/.pi/agent/{plans,reports}.
+	 *  Files older than this are deleted at session start. 0 keeps forever. Default 30. Editable from the VS Code
+	 *  settings panel. */
+	artifactRetentionDays?: number;
 }
 
 export const DEFAULT_MODES: Record<ModeName, ModeConfig> = {
@@ -122,6 +126,7 @@ export const DEFAULT_MODES: Record<ModeName, ModeConfig> = {
 			"If a unit's check keeps failing, don't loop on near-identical fixes — after ~3 genuinely different attempts, stop, record the blocker as a follow-up todo, and move on to units that don't depend on it; do a focused debug pass for the accumulated blockers at the end (request_mode_switch(\"debug\")). Escalate sooner only if the blocker is foundational (everything downstream needs it) or the failure shows the plan itself is wrong (request_mode_switch(\"plan\")), or it needs a decision (ask_user).",
 			"Run code and install deps through the project's own isolated environment / lockfile rather than the global system — whatever the ecosystem uses (a Python venv or uv, Node's local node_modules, Cargo / Bundler / etc.). If the project expects one and none exists, create it first.",
 			"When all units are in, run a final acceptance pass before declaring done: exercise the finished result the way it's actually used — launch the program / hit the endpoint / import-and-call the library — once more AFTER your last edit, and run the plan's validation entries. Unit tests passing is not enough; the final state must have actually been run. For an interactive surface you can't drive (a TUI/GUI), use the closest headless form — a `timeout`'d launch-and-kill smoke or the framework's test harness — and flag what's left for human confirmation; never silently skip the final run.",
+			"If this session is implementing a finalized plan (your first message references a plan file or embeds a finalized plan), call finalize_implementation right after the acceptance pass — it writes the implementation report and hands the work to review. Skip it for ad-hoc tasks with no plan.",
 			"",
 			"# Task Management",
 			"",
@@ -153,6 +158,26 @@ export const DEFAULT_MODES: Record<ModeName, ModeConfig> = {
 			"You are in ASK mode. Explain concisely. Avoid tool calls unless absolutely necessary — most questions are answerable from your own knowledge.",
 			"Use ask_user only to narrow scope when the question is genuinely ambiguous.",
 			"Only call request_mode_switch(\"plan\", reason, summary) when (a) the user explicitly asks for a plan/change, or (b) you've finished answering and the user signals they want a code change.",
+		].join("\n"),
+	},
+	review: {
+		thinkingLevel: "high",
+		activeTools: ["read", "bash", "grep", "find", "ls"],
+		systemPromptAddendum: [
+			"You are in REVIEW mode. An implementation has just been completed; verify it against its plan.",
+			"",
+			"The plan is the review baseline. It is normally already in this session's context (you finalized it here); if compaction removed it, re-read the plan file referenced in the implementation report's header.",
+			"",
+			"Review protocol — in this order:",
+			"1. Read the implementation report, then read the actual changed files. Confirm each plan step is genuinely implemented — trust the code you read over the report's claims.",
+			"2. Check the plan's pinned seam contracts (data shapes, file/API formats, cross-component agreements) against the real code.",
+			"3. Run EVERY entry in the plan's Validation section via bash and report each result verbatim. Entries marked (human) are listed for the user, not run.",
+			"4. Look for scope creep: changes beyond the plan, unrelated file edits, leftover debug artifacts.",
+			"",
+			"Bash is for verification only: run tests, builds, the program, the plan's validation commands. Test artifacts / coverage / logs are fine — ephemeral by-products. You may NOT modify, create, or delete any source or tracked project file by any means — no redirection (`>`, `>>`, `tee`), no `sed -i`/`rm`/`mv`/`cp`/`touch` on project files, no `git commit|push|reset|restore|stash|rebase`, no interpreter one-liners that write (`python -c`, `node -e`, heredocs). Scratch files go under /tmp.",
+			"",
+			"Verdict: end with PASS (every step implemented, all validation green) or a numbered findings list — each finding with file:line evidence and a severity (blocker / should-fix / nit).",
+			"Present the verdict and STOP — never fix anything yourself, and do not start a fix round unprompted. If the user asks for the fixes, call finalize_plan with the fix-list as steps (target_mode \"code\") — it hands off to a new implementation session and the code→review loop repeats.",
 		].join("\n"),
 	},
 };
@@ -229,5 +254,11 @@ export function loadModes(_cwd: string): ModesFile {
 			typeof raw.includeOldToolOutputs === "boolean" ? raw.includeOldToolOutputs : undefined,
 		autoContinueAfterCompact:
 			typeof raw.autoContinueAfterCompact === "boolean" ? raw.autoContinueAfterCompact : undefined,
+		artifactRetentionDays:
+			typeof raw.artifactRetentionDays === "number" &&
+			Number.isFinite(raw.artifactRetentionDays) &&
+			raw.artifactRetentionDays >= 0
+				? Math.round(raw.artifactRetentionDays)
+				: undefined,
 	};
 }

@@ -7,6 +7,7 @@ import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { registerAskUser } from "./ask-user";
 import { registerAutoTitle } from "./auto-title";
 import { registerCommands } from "./commands";
+import { registerFinalizeImplementation } from "./finalize-implementation";
 import { registerFinalizePlan } from "./finalize-plan";
 import { registerHooks } from "./hooks";
 import { registerPermissions } from "./permissions";
@@ -21,7 +22,7 @@ export default function modesExtension(pi: ExtensionAPI) {
 	const rt = createRuntime(pi, state);
 
 	pi.registerFlag("mode", {
-		description: "Initial mode (plan | code | debug | ask)",
+		description: "Initial mode (plan | code | debug | ask | review)",
 		type: "string",
 	});
 
@@ -29,6 +30,7 @@ export default function modesExtension(pi: ExtensionAPI) {
 	registerAskUser(pi);
 	registerRequestModeSwitch(pi, state);
 	registerFinalizePlan(pi, state);
+	registerFinalizeImplementation(pi, state);
 	registerAutoTitle(pi, state);
 	registerTodo(pi, state);
 

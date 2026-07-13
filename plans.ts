@@ -1,7 +1,7 @@
 // Plan file paths + allocation helper. Used by finalize_plan to write a new
 // uniquely-named plan under PLANS_DIR.
 
-import { existsSync } from "node:fs";
+import { existsSync, readdirSync, statSync, unlinkSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 
@@ -40,4 +40,48 @@ export function uniquePlanPath(): string {
 		if (!existsSync(full)) return full;
 	}
 	return join(PLANS_DIR, `plan-${date}-${Date.now()}.md`);
+}
+
+/** Implementation reports written by finalize_implementation (consumed by
+ *  review mode). Sibling of PLANS_DIR so plan + report artifacts live together. */
+export const REPORTS_DIR = join(homedir(), ".pi", "agent", "reports");
+
+/** Allocate a unique impl-*.md path under REPORTS_DIR. */
+export function uniqueReportPath(): string {
+	const date = dateStamp();
+	for (let i = 0; i < 50; i++) {
+		const file = `impl-${date}-${pick(ADJECTIVES)}-${pick(NOUNS)}.md`;
+		const full = join(REPORTS_DIR, file);
+		if (!existsSync(full)) return full;
+	}
+	return join(REPORTS_DIR, `impl-${date}-${Date.now()}.md`);
+}
+
+/** Retention GC for plan/report artifacts: at session start, delete files
+ *  older than retentionDays. 0 (or negative) disables. Only touches our own
+ *  plan-*.md / impl-*.md files; everything is best-effort. */
+export function cleanupArtifacts(retentionDays: number): void {
+	if (!retentionDays || retentionDays <= 0) return;
+	const cutoff = Date.now() - retentionDays * 86_400_000;
+	const targets: Array<[string, string]> = [
+		[PLANS_DIR, "plan-"],
+		[REPORTS_DIR, "impl-"],
+	];
+	for (const [dir, prefix] of targets) {
+		let names: string[];
+		try {
+			names = readdirSync(dir);
+		} catch {
+			continue; // dir missing — nothing to clean
+		}
+		for (const name of names) {
+			if (!name.startsWith(prefix) || !name.endsWith(".md")) continue;
+			const full = join(dir, name);
+			try {
+				if (statSync(full).mtimeMs < cutoff) unlinkSync(full);
+			} catch {
+				/* best-effort */
+			}
+		}
+	}
 }

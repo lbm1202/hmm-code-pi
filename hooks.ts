@@ -8,8 +8,9 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 import { loadModes, MODE_NAMES, type ModeName } from "./config";
 import { writeExampleConfigIfMissing, ensureKeybindingsOverride, ensureQuietStartup } from "./config-io";
-import { DEFAULT_BASH_TIMEOUT_SEC, STATUS_KEYS } from "./constants";
+import { DEFAULT_BASH_TIMEOUT_SEC, PLAN_FINALIZED_ENTRY, STATUS_KEYS } from "./constants";
 import { createCompaction, readPct } from "./compaction";
+import { cleanupArtifacts } from "./plans";
 import { reconcileEditInput, buildEditFailureHint } from "./edit-reconcile";
 import { abbreviateCwd, ansi24, buildBannerLines, fmtTokens } from "./ui";
 import { modeColor } from "./state";
@@ -108,6 +109,27 @@ export function registerHooks(rt: Runtime): void {
 		state.autoContinueCount = 0;
 		state.autoContinueLastCompleted = -1;
 		state.prunedToolCount = 0;
+		// Session-scoped: a handoff-review auto-return must not leak into a
+		// different session after a switch mid-review.
+		state.pendingReviewRevertMode = undefined;
+
+		// Review-target restore: finalize_plan marks its session with a custom
+		// entry so a resumed current-session implementation keeps
+		// finalize_implementation available. New sessions have no entries → false.
+		try {
+			state.planFinalizedInSession = ctx.sessionManager
+				.getEntries()
+				.some(
+					(e: { type: string; customType?: string }) =>
+						e.type === "custom" && e.customType === PLAN_FINALIZED_ENTRY,
+				);
+		} catch {
+			state.planFinalizedInSession = false;
+		}
+
+		// Retention GC for plan/report artifacts (default 30 days, 0 disables).
+		// Best-effort.
+		cleanupArtifacts(state.artifactRetentionDays);
 
 		// On reload, ctx.reload() refreshes settingsManager but NOT the
 		// modelRegistry — its cache of custom models.json + dynamic provider
@@ -554,6 +576,25 @@ function setupRuntimeHooks(rt: Runtime): void {
 			// A new turn is about to start — let its agent_end own compaction so
 			// we don't compact concurrently with the deferred dispatch.
 			return;
+		}
+		// Handoff-review auto-return: a review entered via /review-begin or a
+		// finalize_implementation same-session branch reverts to the prior mode
+		// once the review reply's turn completes. Checked AFTER the deferred
+		// dispatch above — the finalize turn's agent_end dispatches the review
+		// prompt and returns, so the flag survives until the review turn ends.
+		// Manual /mode review never sets the flag (sticky by design), and a
+		// manual mode change mid-review wins over the auto-return.
+		if (state.pendingReviewRevertMode && ctxAe) {
+			const target = state.pendingReviewRevertMode;
+			state.pendingReviewRevertMode = undefined;
+			if (state.current === "review" && target !== "review") {
+				try {
+					await state.apply(target, ctxAe);
+					ctxAe.ui.notify(`Review finished — returned to ${target} mode.`, "info");
+				} catch (err) {
+					console.error("[modes:hooks] review auto-return failed:", err);
+				}
+			}
 		}
 		// True end of the user↔AI exchange. In dynamic mode this is where a
 		// preserved turn finally compacts (boundary=true); legacy mode already

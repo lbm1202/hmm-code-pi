@@ -10,6 +10,7 @@ const MODE_COLORS: Record<ModeName, [number, number, number]> = {
 	code: [240, 240, 240], // white
 	debug: [180, 120, 220], // purple
 	ask: [255, 165, 80], // orange
+	review: [95, 220, 160], // green
 };
 // max name length + 1 → 2 of 4 names get perfect centering (code/plan with len 4),
 // ask/debug end up 1 cell off. Pure-center for all 4 isn't possible with monospace

@@ -13,6 +13,7 @@ export const STATUS_KEYS = {
 	OVERRIDDEN: "overridden",
 	CONTEXT: "context",
 	PLAN_HANDOFF: "plan-handoff",
+	REVIEW_HANDOFF: "review-handoff",
 	TODOS: "todos",
 	AUTO_APPROVE: "auto-approve",
 } as const;
@@ -53,6 +54,19 @@ export const DEFAULT_AUTO_TITLE_PROMPT = "You generate a very short (3–7 words
  *  is applied (state.ts) and when a plan handoff pre-seeds a new session
  *  (commands.ts); read back on restore (state.ts). */
 export const MODE_STATE_ENTRY = "mode-state";
+
+/** Session custom-entry type marking that finalize_plan ran in this session.
+ *  Gates finalize_implementation for current-session plan executions (no parent
+ *  session, but the plan is in context → review runs in place). Written by
+ *  finalize-plan.ts; restored into state.planFinalizedInSession on session_start. */
+export const PLAN_FINALIZED_ENTRY = "plan-finalized";
+
+/** Session custom-entry type carrying client-measured per-message stats
+ *  (ttft / generation / total / thinking durations, keyed by message
+ *  timestamp). Written by the internal /stats-record command (dispatched by
+ *  the VS Code webview after each assistant message); read back by the VS Code
+ *  host when replaying a transcript. Pi itself never consumes it. */
+export const WEBVIEW_STATS_ENTRY = "webview-stats";
 
 /** Models whose thinking is binary (on/off) rather than leveled. */
 export const BINARY_THINKING_FORMATS = new Set(["qwen-chat-template", "qwen", "zai"]);

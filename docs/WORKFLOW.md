@@ -116,6 +116,32 @@ The VS Code inline plan preview ([`tools.ts:renderFinalizePlanPreview`](https://
 
 ---
 
+## 2b. code → review handoff (`finalize_implementation`)
+
+The mirror of `finalize_plan`, closing the plan → code → review loop. The plan-handoff body tells the code session to call `finalize_implementation` once every step is done and the validation pass is green (code targets only — debug handoffs don't get it).
+
+### Availability (review-target gating)
+The tool is injected into code mode **only when the session has a review target**: a parent plan session in the header (plan handoff), OR `finalize_plan` ran in this session (current-session execution — tracked via `state.planFinalizedInSession`, persisted as a `PLAN_FINALIZED_ENTRY` custom entry and restored on session_start). Standalone code sessions never see the tool; an in-tool guard backs the injection gate.
+
+### Schema
+`summary` (declarative outcome) + `changes` (per-file `<path>: <what>` — every created/modified/deleted file) + `validation_results` (each plan validation entry with PASS / FAIL / SKIPPED-with-reason) + optional `deviations` (intentional differences from the plan, with why) + optional `plan_path` (reviewer fallback if the plan left their context).
+
+### Flow
+1. Guard: code mode + review target.
+2. Dialog (`ctx.ui.select`, mirroring finalize_plan): **1. Hand off to review / 2. Continue implementing / 3. Not now**. Headless runs skip it and auto-review in place.
+   - *Continue*: `ctx.ui.input` collects what's missing; the feedback goes back to the model as the tool result. No report is written.
+   - *Not now / dismissed*: defer; the model waits. No report is written.
+3. On **Hand off to review** only: write the implementation report to `~/.pi/agent/reports/impl-<date>-<name>.md` (`plans.ts:uniqueReportPath`) and resolve the **parent plan session** from this session's header (`state.parentSessionPath` — recorded by the client at plan-handoff time; empty for current-session executions or a deleted parent).
+4. Branch:
+   - **RPC client (VS Code)** — `hasUI && !state.hasEditor()`: emit `setStatus(REVIEW_HANDOFF, "<reportPath>|<parentSessionPath or empty>")`, `terminate: true`. The client switches to the parent session (or reviews in place when empty), sends `/review-begin`, then injects the review prompt referencing the report. Parent resolution is Pi-side so the handoff survives webview reloads.
+   - **TUI / headless**: review in the CURRENT session — `state.apply("review", ctx)`, stash the review prompt on `state.pendingModeSwitchMessage`, `terminate: true` (same agent_end fresh-loop dispatch as branch B above).
+5. Review mode verifies files + contracts, runs the plan's Validation entries, ends with PASS or findings, and stops. **The session then auto-returns to its prior mode**: handoff entries (`/review-begin` or the same-session branches) stash the pre-review mode on `state.pendingReviewRevertMode`, and the `agent_end` hook reverts once the review reply's turn completes (a manual mode change mid-review wins; manual `/mode review` never auto-returns). A user-requested fix round calls `finalize_plan` (allowed from plan AND review) with the fix-list as steps → new code session → review again.
+
+### Artifact retention
+Plan files and implementation reports are garbage-collected at session start once older than `modes.json:artifactRetentionDays` (default **30**, `0` = keep forever; `plans.ts:cleanupArtifacts`) — mirroring Claude Code's `cleanupPeriodDays` model. Editable from the VS Code settings panel (General tab).
+
+---
+
 ## 3. debug / ask → plan handoff
 
 `request_mode_switch("plan", reason, context_summary)`:
@@ -143,11 +169,12 @@ setImmediate(() => pi.sendUserMessage(body));
 | Mode | activeTools (LLM-visible) | systemPromptAddendum gist |
 |---|---|---|
 | **plan** | read, grep, find, ls, bash, **ask_user, request_mode_switch, finalize_plan** | 3 phases: investigate → design + ask → finalize_plan. No write/edit + interpreter-bypass guard. Use ask_user for branching decisions, finalize_plan to commit. |
-| **code** | read, edit, write, bash, grep, find, ls, **ask_user, request_mode_switch, todo_write** | Implement as planned. ask_user only for real forks. Use todo_write proactively (3+ steps, user-listed items, plan handoff). |
+| **code** | read, edit, write, bash, grep, find, ls, **ask_user, request_mode_switch, todo_write, finalize_implementation** | Implement as planned. ask_user only for real forks. Use todo_write proactively (3+ steps, user-listed items, plan handoff). finalize_implementation after the acceptance pass when implementing a finalized plan. |
 | **debug** | read, bash, grep, find, ls, **ask_user, request_mode_switch, todo_write** | Hypothesize → reproduce → analyze logs. No edit/write + interpreter-bypass guard. Don't propose a mode switch mid-investigation. |
 | **ask** | read, grep, **ask_user, request_mode_switch** | Explanation-focused. Minimize tool calls. Only propose a plan switch when the user signals intent. |
+| **review** | read, bash, grep, find, ls, **ask_user, request_mode_switch, finalize_plan** | Verify an implementation against its plan: read report + changed files, check pinned contracts, run every Validation entry, report PASS/findings and STOP. Full bash for verification; no file mutation. finalize_plan for a user-requested fix round. |
 
-`edit` / `write` are auto-stripped from plan/debug/ask `activeTools` (`state.ts:PROTECTED_FROM_NON_CODE`). Adding them in `modes.json` is silently ignored with a warning.
+`edit` / `write` are auto-stripped from plan/debug/ask/review `activeTools` (`mode-tools.ts:PROTECTED_FROM_NON_CODE`). Adding them in `modes.json` is silently ignored with a warning.
 
 ---
 

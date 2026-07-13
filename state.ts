@@ -1,3 +1,4 @@
+import { existsSync } from "node:fs";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { MODE_NAMES, type ModeConfig, type ModeName, type ModesFile } from "./config";
 import { readPct } from "./compaction";
@@ -32,6 +33,13 @@ export class ModeState {
 	 * agent_end so the fresh loop reads the post-switch state.
 	 */
 	pendingModeSwitchMessage: string | undefined;
+	/**
+	 * Mode to auto-restore once a HANDOFF-initiated review's reply turn ends
+	 * (agent_end, hooks.ts). Set by the /review-begin command (client review
+	 * handoff) and finalize_implementation's same-session branches; a manual
+	 * /mode review never sets it, so manually entered review stays sticky.
+	 */
+	pendingReviewRevertMode: ModeName | undefined;
 	onApply?: () => void;
 	editorInstance: any;
 	/**
@@ -65,6 +73,13 @@ export class ModeState {
 	 *  session) so the cleared prefix stays cache-stable; reset to 0 on
 	 *  session_start and after compaction, when the tool-result list is rebuilt. */
 	prunedToolCount = 0;
+
+	/** True once finalize_plan ran in THIS session (current-session plan
+	 *  execution). Gates finalize_implementation when there is no parent plan
+	 *  session — the plan is in this session's context, so review runs in
+	 *  place. Persisted as a PLAN_FINALIZED_ENTRY custom entry (written by
+	 *  finalize-plan.ts) and restored on session_start (hooks.ts). */
+	planFinalizedInSession = false;
 
 	/** Mode's configured default model, or undefined if mode has no default. */
 	defaultModelRef(): { provider: string; id: string } | undefined {
@@ -201,8 +216,39 @@ export class ModeState {
 		return this.modes.autoContinueAfterCompact ?? true;
 	}
 
-	computeActiveTools(name: ModeName, allToolNames: string[]): { tools: string[]; stripped: string[] } {
-		return resolveActiveTools(name, this.configFor(name).activeTools ?? [], allToolNames);
+	/** Retention (days) for plan/report artifacts under ~/.pi/agent/{plans,reports}.
+	 *  0 keeps forever. Default 30 days. */
+	get artifactRetentionDays(): number {
+		return this.modes.artifactRetentionDays ?? 30;
+	}
+
+	/** Parent plan session recorded in this session's header (at plan-handoff
+	 *  time), or undefined when absent / deleted. */
+	parentSessionPath(ctx: ExtensionContext): string | undefined {
+		try {
+			const header = (
+				ctx.sessionManager as { getHeader?: () => { parentSession?: string } | undefined }
+			).getHeader?.();
+			if (header?.parentSession && existsSync(header.parentSession)) return header.parentSession;
+		} catch {
+			/* header unavailable */
+		}
+		return undefined;
+	}
+
+	/** Whether finalize_implementation has somewhere to hand a review: a parent
+	 *  plan session, or a plan finalized in THIS session (review runs in place).
+	 *  Standalone code sessions with neither never see the tool. */
+	hasReviewTarget(ctx: ExtensionContext): boolean {
+		return this.planFinalizedInSession || this.parentSessionPath(ctx) !== undefined;
+	}
+
+	computeActiveTools(
+		name: ModeName,
+		allToolNames: string[],
+		hasReviewTarget = false,
+	): { tools: string[]; stripped: string[] } {
+		return resolveActiveTools(name, this.configFor(name).activeTools ?? [], allToolNames, hasReviewTarget);
 	}
 
 	async apply(name: ModeName, ctx: ExtensionContext): Promise<void> {
@@ -232,7 +278,7 @@ export class ModeState {
 		}
 
 		const allToolNames = this.pi.getAllTools().map((t) => t.name);
-		const { tools, stripped } = this.computeActiveTools(name, allToolNames);
+		const { tools, stripped } = this.computeActiveTools(name, allToolNames, this.hasReviewTarget(ctx));
 		this.pi.setActiveTools(tools);
 
 		if (stripped.length > 0) {

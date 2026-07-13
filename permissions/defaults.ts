@@ -75,4 +75,14 @@ export const MODE_DEFAULTS: Record<ModeName, Permissions> = {
 			write: { "**": "deny" },
 		},
 	},
+	review: {
+		// bash inherits base (review must RUN the plan's validation entries —
+		// tests, builds, smoke launches — same needs as debug). File mutation
+		// is barred by the mode prompt plus the edit/write deny below
+		// (activeTools already omits them; this is defense in depth).
+		rules: {
+			edit: { "**": "deny" },
+			write: { "**": "deny" },
+		},
+	},
 };

@@ -2,15 +2,16 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { StringEnum } from "@earendil-works/pi-ai";
 import { Type } from "typebox";
-import { STATUS_KEYS } from "./constants";
+import { PLAN_FINALIZED_ENTRY, STATUS_KEYS } from "./constants";
+import { L } from "./l10n";
 import { PLANS_DIR, uniquePlanPath } from "./plans";
 import type { ModeState } from "./state";
 
 const TARGETS = ["code", "debug"] as const;
 
-const CHOICE_NEW = "1. Execute in NEW session";
-const CHOICE_CURRENT = "2. Execute in CURRENT session";
-const CHOICE_REVISE = "3. Revise the plan";
+const CHOICE_NEW = L("1. Execute in NEW session");
+const CHOICE_CURRENT = L("2. Execute in CURRENT session");
+const CHOICE_REVISE = L("3. Revise the plan");
 
 export function registerFinalizePlan(pi: ExtensionAPI, state: ModeState) {
 	pi.registerTool({
@@ -45,10 +46,15 @@ export function registerFinalizePlan(pi: ExtensionAPI, state: ModeState) {
 		}),
 
 		async execute(_id, params, _signal, _onUpdate, ctx) {
-			if (state.current !== "plan") {
+			// review may also finalize: a failed review produces a fix-list plan
+			// that re-enters the code→review loop via the same handoff.
+			if (state.current !== "plan" && state.current !== "review") {
 				return {
 					content: [
-						{ type: "text", text: `finalize_plan is plan-mode only (current: ${state.current}).` },
+						{
+							type: "text",
+							text: `finalize_plan is only available in plan/review modes (current: ${state.current}).`,
+						},
 					],
 					isError: true,
 				};
@@ -71,6 +77,18 @@ export function registerFinalizePlan(pi: ExtensionAPI, state: ModeState) {
 			mkdirSync(PLANS_DIR, { recursive: true });
 			const planPath = uniquePlanPath();
 			writeFileSync(planPath, planMarkdown, "utf-8");
+
+			// Mark this session as a review target: a current-session execution has
+			// no parent session, but the plan is in context, so a later
+			// finalize_implementation can hand off to an in-place review. Set before
+			// the branches below so the code-mode apply already injects the tool;
+			// the custom entry restores the flag when the session is resumed.
+			state.planFinalizedInSession = true;
+			try {
+				pi.appendEntry(PLAN_FINALIZED_ENTRY, { planPath });
+			} catch {
+				/* entry write is best-effort — the in-memory flag covers this run */
+			}
 
 			if (!ctx.hasUI) {
 				await state.apply(targetMode, ctx);
@@ -101,14 +119,14 @@ export function registerFinalizePlan(pi: ExtensionAPI, state: ModeState) {
 			const isTui = !!process.stdout.isTTY;
 			const prompt = isTui
 				? [
-						`Plan saved → ${planPath}`,
+						`${L("Plan saved →")} ${planPath}`,
 						"",
 						planMarkdown.trim(),
 						"",
 						"───────────────────────────────",
-						"What next?",
+						L("What next?"),
 					].join("\n")
-				: `Plan saved → ${planPath}\n\nWhat next?`;
+				: `${L("Plan saved →")} ${planPath}\n\n${L("What next?")}`;
 			const choice = await ctx.ui.select(prompt, [
 				CHOICE_NEW,
 				CHOICE_CURRENT,
@@ -206,7 +224,7 @@ export function registerFinalizePlan(pi: ExtensionAPI, state: ModeState) {
 			}
 
 			// CHOICE_REVISE
-			const feedback = await ctx.ui.input("How should the plan be revised?", "Type your changes…");
+			const feedback = await ctx.ui.input(L("How should the plan be revised?"), L("Type your changes…"));
 			if (!feedback || !feedback.trim()) {
 				return {
 					content: [
@@ -286,7 +304,7 @@ function planMessageBody(planMarkdown: string, targetMode: "code" | "debug"): st
 		targetMode === "debug"
 			? "You are now in DEBUG mode (handoff from plan). You have full bash/shell access for reproduction and investigation, but edit/write are disabled — diagnose per the plan, don't modify code."
 			: "You are now in CODE mode (handoff from plan). You are no longer read-only — edit/write/bash are available.";
-	return [
+	const lines = [
 		modeLine,
 		"",
 		"Treat the plan below as authoritative scope. Do exactly what it specifies; do not re-plan, expand scope, refactor adjacent code, or add features the plan did not ask for.",
@@ -294,7 +312,13 @@ function planMessageBody(planMarkdown: string, targetMode: "code" | "debug"): st
 		"First action: call todo_write with one item per plan step, then work through them one-by-one, marking in_progress before starting each and completed immediately after finishing.",
 		"",
 		"If the plan has a real gap (missing step, contradicts the code, wrong path), call request_mode_switch(\"plan\", reason, summary) instead of improvising.",
-		"",
-		planMarkdown,
-	].join("\n");
+	];
+	if (targetMode === "code") {
+		lines.push(
+			"",
+			"When every step is done and the final validation pass is green, call finalize_implementation — it writes the implementation report and hands the work to review.",
+		);
+	}
+	lines.push("", planMarkdown);
+	return lines.join("\n");
 }

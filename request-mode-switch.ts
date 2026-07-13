@@ -2,6 +2,7 @@ import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { StringEnum } from "@earendil-works/pi-ai";
 import { Type } from "typebox";
 import { MODE_NAMES, type ModeName } from "./config";
+import { L, Lf } from "./l10n";
 import type { ModeState } from "./state";
 
 export function registerRequestModeSwitch(pi: ExtensionAPI, state: ModeState) {
@@ -40,7 +41,7 @@ export function registerRequestModeSwitch(pi: ExtensionAPI, state: ModeState) {
 					content: [
 						{
 							type: "text",
-							text: "Cannot enter code mode from here. Code is reached via finalize_plan (from plan), or directly from debug for a localized, already-diagnosed fix. Switch to plan and call finalize_plan instead.",
+							text: "Cannot enter code mode from here. Code is reached via finalize_plan (from plan or review), or directly from debug for a localized, already-diagnosed fix. Call finalize_plan instead (switch to plan first if you are not in plan/review).",
 						},
 					],
 					isError: true,
@@ -56,8 +57,8 @@ export function registerRequestModeSwitch(pi: ExtensionAPI, state: ModeState) {
 
 			// confirm(title, message) — title is the short header, message the body.
 			const confirmed = await ctx.ui.confirm(
-				"Mode switch?",
-				`${params.reason}\n\nSwitch from ${state.current} to ${target}?`,
+				L("Mode switch?"),
+				`${params.reason}\n\n${Lf("Switch from {from} to {to}?", { from: state.current, to: target })}`,
 			);
 
 			if (!confirmed) {

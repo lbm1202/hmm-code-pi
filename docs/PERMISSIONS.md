@@ -57,7 +57,7 @@ Across layers: **strongest wins** — `deny > ask > allow`. Any layer's `deny` w
 
 > Why `**` instead of `*`: path-mode glob `*` is single-segment (`[^/]*`), so `*: ask` would silently miss any nested path like `src/.env` or `/etc/passwd`. `**` (`.*`) is recursive and matches across slashes — closing that gap.
 
-### `BASH_DEFAULT` (code / debug modes)
+### `BASH_DEFAULT` (code / debug / review modes)
 
 `*: ask` plus an allowlist for ~30 safe commands. Anything not in the allow list (`rm`, `sudo`, `curl | sh`, `npm install`, `git push`, etc.) becomes `ask`.
 
@@ -102,9 +102,17 @@ ask:   {
     write: { "**": "deny" }
   }
 }
+review: {
+  rules: {
+    // bash inherits base BASH_DEFAULT — review must RUN the plan's
+    // validation commands (tests, builds, smoke launches), like debug.
+    edit:  { "**": "deny" },
+    write: { "**": "deny" }
+  }
+}
 ```
 
-> Note: plan/ask `activeTools` already exclude edit/write from the LLM, so the `edit: deny` / `write: deny` rules are defense-in-depth — they catch the case where a user manually adds edit/write to those modes' `activeTools`.
+> Note: plan/ask/review `activeTools` already exclude edit/write from the LLM, so the `edit: deny` / `write: deny` rules are defense-in-depth — they catch the case where a user manually adds edit/write to those modes' `activeTools`.
 
 ---
 
@@ -134,10 +142,11 @@ Lives in the project directory. Overrides the global rules.
     "<absolute or ~ pattern>": "allow" | "ask" | "deny"
   },
   "modes": {
-    "plan":  { /* same shape — overrides for this mode only */ },
-    "code":  { ... },
-    "debug": { ... },
-    "ask":   { ... }
+    "plan":   { /* same shape — overrides for this mode only */ },
+    "code":   { ... },
+    "debug":  { ... },
+    "ask":    { ... },
+    "review": { ... }
   }
 }
 ```
