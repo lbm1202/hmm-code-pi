@@ -7,6 +7,9 @@ This extension is **not** published to npm directly; it ships bundled inside the
 
 ## [Unreleased]
 
+### Fixed
+- **Session auto-titles regressed to the raw first message on Pi ≥ 0.80.** pi-ai 0.80 removed the `"off"` reasoning level; the truthy `reasoning: "off"` string skipped the no-thinking branch and routed adaptive Claude title models (e.g. a haiku `autoTitle` override) into effort-based thinking, where the simple completion path also sends `max_tokens: null` — Anthropic rejects the request (400) and `completeSimple` returns it as a `stopReason: "error"` message rather than throwing, so every title silently fell back to the user text. Thinking-off is now expressed by omitting `reasoning`, with an explicit small `maxTokens`; title-model errors are logged to stderr instead of being swallowed.
+
 ## [0.1.12] — 2026-07-14
 
 Ships bundled in hmm-code-vscode 0.1.14.

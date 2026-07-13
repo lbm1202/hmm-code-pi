@@ -190,11 +190,23 @@ async function runTitleGen(args: TitleGenArgs): Promise<void> {
 		const result = await completeSimple(model as any, context, {
 			apiKey: resolvedApiKey,
 			headers: resolvedHeaders,
-			reasoning: "off",
+			// Thinking OFF = OMIT `reasoning`. Pi-ai ≥ 0.80 has no "off" level —
+			// the string is truthy, so `reasoning: "off"` skipped the
+			// no-thinking branch and routed adaptive Claude models (a common
+			// autoTitle pick, e.g. haiku) into effort-based thinking, where the
+			// simple path also sends max_tokens: null → Anthropic 400 → every
+			// title silently fell back to the raw user text.
+			maxTokens: 200,
 			metadata: {
 				chat_template_kwargs: { enable_thinking: false, preserve_thinking: false },
 			},
 		} as any);
+		// Provider errors come back as a message with stopReason:"error", not an
+		// exception — log them (stderr only; the client filters [auto-title]
+		// lines from chat) so the next regression isn't invisible.
+		if ((result as any)?.stopReason === "error") {
+			console.error("[auto-title] title model call failed:", (result as any)?.errorMessage);
+		}
 		title = pickTitle(extractText((result as any)?.content));
 		if (!title) {
 			const thinking = extractThinking((result as any)?.content);
@@ -203,8 +215,9 @@ async function runTitleGen(args: TitleGenArgs): Promise<void> {
 				title = pickTitle(lastLine);
 			}
 		}
-	} catch {
-		/* silent — fall through to userText pickTitle fallback */
+	} catch (err) {
+		// Fall through to the userText fallback, but leave a trace.
+		console.error("[auto-title] title generation threw:", err);
 	}
 
 	if (!title) title = pickTitle(userText);
