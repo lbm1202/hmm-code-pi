@@ -210,6 +210,7 @@ export function createCompaction(rt: Runtime): Compaction {
 					event.signal,
 					"off",
 					undefined,
+					auth.env,
 				);
 				return { compaction: result };
 			} catch (err) {

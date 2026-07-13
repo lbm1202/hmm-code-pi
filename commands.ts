@@ -7,13 +7,13 @@ import { BINARY_THINKING_FORMATS, MODE_STATE_ENTRY, STATUS_KEYS, WEBVIEW_STATS_E
 import { updateModeConfigField } from "./config-io";
 import type { Runtime } from "./runtime";
 
-const THINKING_LEVELS = ["off", "minimal", "low", "medium", "high", "xhigh"] as const;
-// CYCLE_LEVELS includes xhigh — handleThinkingToggle's supportedAll filter
-// already drops unmapped levels per model, so models that don't declare xhigh
-// in thinkingLevelMap just skip it. Models that DO declare it (gpt-5.5, etc.)
-// now reachable via /thinking-toggle and Alt+T.
-const CYCLE_LEVELS = ["off", "minimal", "low", "medium", "high", "xhigh"] as const;
-type BinaryOnLevel = "minimal" | "low" | "medium" | "high" | "xhigh";
+const THINKING_LEVELS = ["off", "minimal", "low", "medium", "high", "xhigh", "max"] as const;
+// CYCLE_LEVELS includes xhigh/max — handleThinkingToggle's supportedAll filter
+// drops levels per model (pi-ai getSupportedThinkingLevels semantics: null-mapped
+// excluded; xhigh/max only when explicitly mapped), so models that don't declare
+// them just skip those steps in /thinking-toggle and Alt+T.
+const CYCLE_LEVELS = ["off", "minimal", "low", "medium", "high", "xhigh", "max"] as const;
+type BinaryOnLevel = "minimal" | "low" | "medium" | "high" | "xhigh" | "max";
 
 // Module-level so /thinking-toggle and Alt+T share the same "remember last
 // non-off level" state across calls. Binary models flip between off and this.
@@ -212,10 +212,12 @@ export async function thinkingToggleHandler(
 	}
 
 	const map = model.thinkingLevelMap ?? {};
-	const supportedAll =
-		Object.keys(map).length > 0
-			? (CYCLE_LEVELS as readonly string[]).filter((lvl) => map[lvl] !== null)
-			: ([...CYCLE_LEVELS] as string[]);
+	const supportedAll = (CYCLE_LEVELS as readonly string[]).filter((lvl) => {
+		const mapped = map[lvl];
+		if (mapped === null) return false;
+		if (lvl === "xhigh" || lvl === "max") return mapped !== undefined;
+		return true;
+	});
 	if (supportedAll.length === 0) {
 		ctx.ui.notify("Model has no supported thinking levels.", "warning");
 		return;
@@ -394,7 +396,7 @@ async function editModeThinking(
 	modeName: ModeName,
 ): Promise<boolean> {
 	// Pi-standard supported-levels logic: include each level unless its
-	// thinkingLevelMap entry is null. xhigh is included only when explicitly
+	// thinkingLevelMap entry is null. xhigh/max are included only when explicitly
 	// mapped (not undefined). For binary thinking formats, collapse the picker
 	// to off/on while still storing canonical level keys.
 	let availableLevels: string[] = [...THINKING_LEVELS];
@@ -411,7 +413,7 @@ async function editModeThinking(
 				availableLevels = (THINKING_LEVELS as readonly string[]).filter((lvl) => {
 					const mapped = map[lvl];
 					if (mapped === null) return false;
-					if (lvl === "xhigh") return mapped !== undefined;
+					if (lvl === "xhigh" || lvl === "max") return mapped !== undefined;
 					return true;
 				});
 			}
